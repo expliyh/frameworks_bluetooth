@@ -19,53 +19,51 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BluetoothTest">
-
-        <activity android:name=".MainActivity"
+        <activity
+            android:name=".bredr.spp.SppActivity"
+            android:exported="false"
+            android:label="@string/title_activity_spp"
+            android:theme="@style/Theme.BluetoothTest"
+            tools:targetApi="tiramisu"
+            android:enableOnBackInvokedCallback="true" />
+        <activity
+            android:name=".MainActivity"
             android:exported="true"
-            android:windowSoftInputMode="adjustPan">
+            android:windowSoftInputMode="adjustPan"
+            android:theme="@style/Theme.BluetoothTest.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
             android:name=".LocalAdapter.OnOffActivity"
             android:label="@string/bredr_on_off" />
-
         <activity
             android:name=".bredr.BredrInquiryActivity"
             android:label="@string/bredr_inquiry" />
-
         <activity
             android:name=".bredr.BondActivity"
             android:label="@string/bond" />
-
         <activity
             android:name=".bredr.SppActivity"
             android:label="@string/spp" />
-
         <activity
             android:name=".bredr.BredrL2capActivity"
             android:label="@string/bredr_l2cap" />
-
         <activity
             android:name=".ble.BleScanActivity"
             android:label="@string/ble_scan" />
-
         <activity
             android:name=".ble.BleCentralActivity"
             android:label="@string/ble_central" />
-
         <activity
             android:name=".ble.BlePeripheralActivity"
             android:label="@string/ble_peripheral" />
-
         <activity
             android:name=".ble.BleL2capActivity"
             android:label="@string/ble_l2cap" />
-
     </application>
 
 </manifest>

@@ -28,6 +28,6 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.appcompat:appcompat:1.6.1'
+    // Keep core free of UI toolkits (no appcompat/material/Compose); UI dependencies live in the app module.
     implementation 'androidx.recyclerview:recyclerview:1.3.2'
 }

@@ -72,6 +72,7 @@ public class BtSock {
     private String mStringToSend;
     private long mCrcValue;
     private StringBuffer mReceivedStrBuf;
+    private boolean mLogRawData;
     public static final int SOCK_TYPE_SPP_INSECURE = 0;
     public static final int SOCK_TYPE_SPP_SECURE = 1;
     public static final int SOCK_TYPE_L2CAP_BREDR_INSECURE = 2;
@@ -92,6 +93,7 @@ public class BtSock {
 
         mSockRole = SOCK_ROLE_UNKNOWN;
         mReceivedStrBuf = new StringBuffer();
+        mLogRawData = false;
     }
 
     // var means UUID, for SOCK_TYPE_SPP_xxx
@@ -238,6 +240,10 @@ public class BtSock {
         // Show logs on UI
         String str = "Sent: size = " + msgToSend.length() + " Bytes: \"" + msgToSend + "\"\r\n";
         showLogs(str);
+    }
+
+    public void setLogRawData(boolean enabled) {
+        mLogRawData = enabled;
     }
 
     // AcceptThread is used by Server to listen a connection from other clients
@@ -418,7 +424,9 @@ public class BtSock {
                                 str += ", Duration: " + duration + " ms, Average Tput = " + mTotalSize/duration + " kB/s";
                             str += "\r\n";
 
-                            //showLogs(str);
+                            if (mLogRawData) {
+                                showLogs(str);
+                            }
 
                             // Calculate CRC
                             CRC32 crc = new CRC32();
@@ -437,7 +445,9 @@ public class BtSock {
                         str = "Received " + String.valueOf(readSize) + " Bytes: " + readStr +"\r\n";
 
                         // Send message to UI
-                        //showLogs(str);
+                        if (mLogRawData) {
+                            showLogs(str);
+                        }
                     }
                 }
             } catch (IOException e) {
