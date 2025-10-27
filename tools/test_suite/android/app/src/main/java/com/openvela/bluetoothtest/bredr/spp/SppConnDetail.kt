@@ -14,21 +14,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
@@ -36,17 +33,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -62,11 +56,10 @@ import java.util.UUID
 
 private val MAC_ADDRESS_REGEX = Regex("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SppDetailScreen(
     session: SppSessionUiState,
-    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
     onServiceUuidChange: (String) -> Unit,
     onRemoteAddressChange: (String) -> Unit,
     onDataToSendChange: (String) -> Unit,
@@ -77,8 +70,6 @@ fun SppDetailScreen(
     onDisconnect: () -> Unit,
     onSend: () -> Unit,
     onClearLog: () -> Unit,
-    onRemove: () -> Unit,
-    onReset: () -> Unit,
     rawLogEnabled: Boolean,
     onRawLogToggle: (Boolean) -> Unit,
     bondedDevices: List<BondedDeviceOption>,
@@ -97,80 +88,48 @@ fun SppDetailScreen(
         session.cycles.isBlank() || session.cycles.toIntOrNull()?.let { it > 0 } == true
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(text = session.title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = stringResource(id = R.string.back)
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onReset) {
-                        Icon(
-                            imageVector = Icons.Default.Restore,
-                            contentDescription = stringResource(id = R.string.reset_spp_content_description)
-                        )
-                    }
-                    IconButton(onClick = onRemove) {
-                        Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = stringResource(id = R.string.delete)
-                        )
-                    }
-                }
+    LazyColumn(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            StatusSection(session = session)
+        }
+        item {
+            ServiceConfigurationSection(
+                session = session,
+                isUuidValid = isUuidValid,
+                isAddressValid = isAddressValid,
+                onServiceUuidChange = onServiceUuidChange,
+                onRemoteAddressChange = onRemoteAddressChange,
+                bondedDevices = bondedDevices,
+                deviceMenuExpanded = deviceMenuExpanded,
+                onOpenDevicePicker = onOpenDevicePicker,
+                onDismissDeviceMenu = onDismissDeviceMenu,
+                onSelectDevice = onSelectDevice,
+                onRegister = onRegister,
+                onUnregister = onUnregister,
+                onConnect = onConnect,
+                onDisconnect = onDisconnect
             )
         }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                StatusSection(session = session)
-            }
-            item {
-                ServiceConfigurationSection(
-                    session = session,
-                    isUuidValid = isUuidValid,
-                    isAddressValid = isAddressValid,
-                    onServiceUuidChange = onServiceUuidChange,
-                    onRemoteAddressChange = onRemoteAddressChange,
-                    bondedDevices = bondedDevices,
-                    deviceMenuExpanded = deviceMenuExpanded,
-                    onOpenDevicePicker = onOpenDevicePicker,
-                    onDismissDeviceMenu = onDismissDeviceMenu,
-                    onSelectDevice = onSelectDevice,
-                    onRegister = onRegister,
-                    onUnregister = onUnregister,
-                    onConnect = onConnect,
-                    onDisconnect = onDisconnect
-                )
-            }
-            item {
-                PayloadSection(
-                    session = session,
-                    isCyclesValid = isCyclesValid,
-                    onDataToSendChange = onDataToSendChange,
-                    onCyclesChange = onCyclesChange,
-                    onSend = onSend
-                )
-            }
-            item {
-                LogSection(
-                    log = session.log,
-                    rawLogEnabled = rawLogEnabled,
-                    onRawLogToggle = onRawLogToggle,
-                    onClearLog = onClearLog
-                )
-            }
+        item {
+            PayloadSection(
+                session = session,
+                isCyclesValid = isCyclesValid,
+                onDataToSendChange = onDataToSendChange,
+                onCyclesChange = onCyclesChange,
+                onSend = onSend
+            )
+        }
+        item {
+            LogSection(
+                logEntries = session.logEntries,
+                rawLogEnabled = rawLogEnabled,
+                onRawLogToggle = onRawLogToggle,
+                onClearLog = onClearLog
+            )
         }
     }
 }
@@ -442,7 +401,7 @@ private fun PayloadSection(
 
 @Composable
 private fun LogSection(
-    log: String,
+    logEntries: List<String>,
     rawLogEnabled: Boolean,
     onRawLogToggle: (Boolean) -> Unit,
     onClearLog: () -> Unit
@@ -482,25 +441,43 @@ private fun LogSection(
             }
         }
 
-        val scrollState = rememberScrollState()
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 160.dp, max = 320.dp),
             tonalElevation = 4.dp
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(12.dp)
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = if (log.isEmpty()) stringResource(id = R.string.log_empty_hint) else log,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            SelectionContainer {
+                if (logEntries.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(id = R.string.log_empty_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    val listState = rememberLazyListState()
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(12.dp),
+                        state = listState,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        itemsIndexed(logEntries, key = { index, _ -> index }) { _, entry ->
+                            Text(
+                                text = entry.trimEnd('\n'),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
         }

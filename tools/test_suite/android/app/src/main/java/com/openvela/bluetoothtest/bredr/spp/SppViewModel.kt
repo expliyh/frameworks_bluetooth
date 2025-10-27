@@ -16,11 +16,14 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import com.openvela.bluetooth.BtSock
 import java.util.UUID
+import kotlin.collections.ArrayDeque
 
 class SppViewModel(application: Application) : AndroidViewModel(application) {
     companion object {
         private const val LOG_MAX_CHARS = 10_000
         private const val DEFAULT_TITLE_PREFIX = "SPP #"
+        private const val LOG_ENTRY_DELIMITER = "\u001E"
+        private const val LINE_SEPARATOR = "\n"
         const val DEFAULT_UUID = "00001101-0000-1000-8000-00805f9b34fb"
     }
 
@@ -31,7 +34,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         val remoteAddress: String,
         val dataToSend: String,
         val cycles: String,
-        val log: String,
+        val logEntries: List<String>,
         val isRegistered: Boolean,
         val isConnected: Boolean,
         val isSending: Boolean,
@@ -55,6 +58,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         private set
 
     private val controllers = mutableMapOf<Int, SppController>()
+    private val logBuffers = mutableMapOf<Int, LogBuffer>()
     private var nextId = 1
 
     init {
@@ -68,6 +72,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
                 val session = record.toUiState()
                 _sessions.add(session)
                 controllers[session.id] = SppController(session.id, ::appendLog)
+                logBuffers[session.id] = LogBuffer(LOG_MAX_CHARS, session.logEntries)
             }
             nextId = restored.maxOf { it.id } + 1
         } else {
@@ -86,7 +91,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
             remoteAddress = "",
             dataToSend = "",
             cycles = "1",
-            log = "",
+            logEntries = emptyList(),
             isRegistered = false,
             isConnected = false,
             isSending = false,
@@ -94,6 +99,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         )
         _sessions.add(session)
         controllers[id] = SppController(id, ::appendLog)
+        logBuffers[id] = LogBuffer(LOG_MAX_CHARS)
         persistSession(session)
         if (openDetail) {
             selectSession(id)
@@ -102,6 +108,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun removeSession(id: Int) {
         controllers.remove(id)?.cleanup()
+        logBuffers.remove(id)
         val index = _sessions.indexOfFirst { it.id == id }
         if (index != -1) {
             _sessions.removeAt(index)
@@ -115,6 +122,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
     fun resetSessions() {
         controllers.values.forEach { it.cleanup() }
         controllers.clear()
+        logBuffers.clear()
         _sessions.clear()
         store.clear()
         nextId = 1
@@ -143,7 +151,8 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearLog(id: Int) {
-        updateSession(id, persist = true) { it.copy(log = "") }
+        logBuffers.getOrPut(id) { LogBuffer(LOG_MAX_CHARS) }.clear()
+        updateSession(id, persist = true) { it.copy(logEntries = emptyList()) }
     }
 
     fun setRawLogEnabled(id: Int, enabled: Boolean) {
@@ -155,7 +164,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         val session = findSession(id) ?: return
         val uuid = session.serviceUuid.trim()
         if (!isValidUuid(uuid)) {
-            appendLog(id, "Invalid UUID: $uuid\r\n")
+            appendLog(id, "Invalid UUID: $uuid$LINE_SEPARATOR")
             return
         }
         controllers[id]?.register(uuid)
@@ -172,11 +181,11 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         val uuid = session.serviceUuid.trim()
         val address = session.remoteAddress.trim()
         if (!isValidUuid(uuid)) {
-            appendLog(id, "Invalid UUID: $uuid\r\n")
+            appendLog(id, "Invalid UUID: $uuid$LINE_SEPARATOR")
             return
         }
         if (address.isEmpty()) {
-            appendLog(id, "Remote address is empty\r\n")
+            appendLog(id, "Remote address is empty$LINE_SEPARATOR")
             return
         }
         controllers[id]?.connect(address, uuid)
@@ -193,11 +202,11 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         val data = session.dataToSend
         val cycles = session.cycles.trim().takeIf { it.isNotEmpty() }?.toIntOrNull() ?: 1
         if (data.isEmpty()) {
-            appendLog(id, "Nothing to send\r\n")
+            appendLog(id, "Nothing to send$LINE_SEPARATOR")
             return
         }
         if (cycles <= 0) {
-            appendLog(id, "Cycles must be > 0\r\n")
+            appendLog(id, "Cycles must be > 0$LINE_SEPARATOR")
             return
         }
         updateSession(id, persist = false) { it.copy(isSending = true) }
@@ -223,16 +232,100 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun appendLog(id: Int, message: String) {
-        val normalized =
-            if (message.endsWith("\n") || message.endsWith("\r")) message else "$message\r\n"
+        val normalized = normalizeLogEntry(message)
+        val buffer = logBuffers.getOrPut(id) { LogBuffer(LOG_MAX_CHARS) }
+        val snapshot = buffer.append(normalized)
         updateSession(id, persist = false) { state ->
-            val combined = (normalized + state.log).take(LOG_MAX_CHARS)
-            state.copy(log = combined)
+            state.copy(logEntries = snapshot)
         }
     }
 
     private fun persistSession(session: SppSessionUiState) {
-        store.upsert(session.toRecord())
+        val logString = logBuffers[session.id]?.persistedString()
+            ?: joinLogEntries(session.logEntries)
+        store.upsert(session.toRecord(logString))
+    }
+
+    private fun joinLogEntries(entries: List<String>): String =
+        if (entries.isEmpty()) "" else entries.joinToString(separator = LOG_ENTRY_DELIMITER) {
+            it.normalizeLineEndings()
+        }
+
+    private fun String.toLogEntries(): List<String> {
+        if (isBlank()) return emptyList()
+        return if (contains(LOG_ENTRY_DELIMITER)) {
+            split(LOG_ENTRY_DELIMITER).mapNotNull { entry ->
+                val normalized = entry.normalizeLineEndings()
+                if (normalized.isEmpty()) null else normalized
+            }
+        } else {
+            val normalized = normalizeLineEndings()
+            if (normalized.isEmpty()) emptyList() else listOf(normalized)
+        }
+    }
+
+    private fun String.normalizeLineEndings(): String =
+        replace("\r\n", LINE_SEPARATOR).replace("\r", LINE_SEPARATOR)
+
+    private fun normalizeLogEntry(message: String): String {
+        val normalized = message.normalizeLineEndings()
+        return if (normalized.endsWith(LINE_SEPARATOR)) normalized else normalized + LINE_SEPARATOR
+    }
+
+    private inner class LogBuffer(
+        private val maxChars: Int,
+        initialEntries: List<String> = emptyList()
+    ) {
+        private val entries = ArrayDeque<String>()
+        private var totalChars = 0
+
+        init {
+            initialEntries.asReversed().forEach { entry ->
+                if (entry.isNotEmpty()) {
+                    entries.addFirst(entry)
+                    totalChars += entry.length
+                }
+            }
+            trimTail()
+        }
+
+        fun append(entry: String): List<String> {
+            if (entry.isEmpty()) {
+                return snapshot()
+            }
+            entries.addFirst(entry)
+            totalChars += entry.length
+            trimTail()
+            return snapshot()
+        }
+
+        fun clear() {
+            entries.clear()
+            totalChars = 0
+        }
+
+        fun persistedString(): String =
+            if (entries.isEmpty()) "" else entries.joinToString(separator = LOG_ENTRY_DELIMITER) {
+                it.normalizeLineEndings()
+            }
+
+        fun snapshot(): List<String> = entries.toList()
+
+        private fun trimTail() {
+            while (totalChars > maxChars && entries.isNotEmpty()) {
+                val removed = entries.removeLast()
+                totalChars -= removed.length
+                val remainingCapacity = maxChars - totalChars
+                if (remainingCapacity > 0) {
+                    val trimmed = removed.take(remainingCapacity)
+                    if (trimmed.isNotEmpty()) {
+                        entries.addLast(trimmed)
+                        totalChars += trimmed.length
+                        break
+                    }
+                }
+            }
+        }
     }
 
     private fun SppSessionStore.Record.toUiState() = SppSessionUiState(
@@ -242,21 +335,21 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
         remoteAddress = remoteAddress,
         dataToSend = dataToSend,
         cycles = cycles,
-        log = log,
+        logEntries = log.toLogEntries(),
         isRegistered = false,
         isConnected = false,
         isSending = false,
         logRawDataEnabled = false
     )
 
-    private fun SppSessionUiState.toRecord() = SppSessionStore.Record(
+    private fun SppSessionUiState.toRecord(logContent: String) = SppSessionStore.Record(
         id = id,
         title = title,
         serviceUuid = serviceUuid,
         remoteAddress = remoteAddress,
         dataToSend = dataToSend,
         cycles = cycles,
-        log = log.take(LOG_MAX_CHARS)
+        log = logContent.take(LOG_MAX_CHARS)
     )
 
     private fun isValidUuid(value: String): Boolean = try {
@@ -317,6 +410,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         controllers.values.forEach { it.cleanup() }
         controllers.clear()
+        logBuffers.clear()
         store.close()
         super.onCleared()
     }
@@ -354,7 +448,7 @@ class SppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 block()
             } catch (t: Throwable) {
-                log(id, "Error: ${t.message ?: t.javaClass.simpleName}\r\n")
+                log(id, "Error: ${t.message ?: t.javaClass.simpleName}$LINE_SEPARATOR")
             }
         }
     }

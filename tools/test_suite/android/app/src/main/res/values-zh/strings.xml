@@ -9,6 +9,34 @@
     <string name="bond">创建/移除配对</string>
     <string name="spp">SPP</string>
     <string name="bredr_l2cap">BREDR L2CAP</string>
+        <string name="l2cap_default_title">L2CAP #%1$d</string>
+        <string name="l2cap_endpoint_title">通道 #%1$d</string>
+        <string name="l2cap_service_label">PSM / UUID</string>
+        <string name="l2cap_service_hint">请输入 L2CAP PSM 或服务 UUID。</string>
+        <string name="l2cap_service_value">PSM / UUID：%1$s</string>
+        <string name="l2cap_status_section_title">通道状态</string>
+        <string name="l2cap_status_section_subtitle">查看服务器注册和链路状态。</string>
+        <string name="l2cap_service_section_title">服务配置</string>
+    <string name="l2cap_service_section_subtitle">配置 PSM/UUID 和远端地址，并管理注册与连接。</string>
+        <string name="l2cap_connection_section_title">连接控制</string>
+        <string name="l2cap_connection_section_subtitle">输入远端地址并执行连接或断开。</string>
+        <string name="l2cap_payload_section_title">发送负载</string>
+        <string name="l2cap_payload_section_subtitle">编辑要发送的数据并写入通道。</string>
+        <string name="l2cap_log_section_subtitle">查看该通道的套接字活动。</string>
+        <string name="l2cap_clear_log_confirmation">清空所有 L2CAP 日志？</string>
+        <string name="l2cap_log_request_register">已请求为 %1$s 注册。</string>
+        <string name="l2cap_log_request_unregister">已请求取消注册。</string>
+        <string name="l2cap_log_request_connect">已请求连接到 %1$s（%2$s）。</string>
+        <string name="l2cap_log_request_disconnect">已请求断开连接。</string>
+        <string name="l2cap_log_request_send">已请求发送（%1$d 字节）。</string>
+        <string name="l2cap_log_error">操作失败：%1$s</string>
+        <string name="l2cap_add_channel_content_description">新增 L2CAP 通道</string>
+        <string name="l2cap_delete_channel_content_description">删除 L2CAP 通道</string>
+        <string name="l2cap_reset_channels_title">重置 L2CAP 通道？</string>
+        <string name="l2cap_reset_channels_message">所有 L2CAP 通道都会被删除，并创建一个默认通道。</string>
+        <string name="l2cap_reset_channels_content_description">重置 L2CAP 通道</string>
+        <string name="l2cap_empty_hint">暂无 L2CAP 通道</string>
+        <string name="l2cap_empty_hint_secondary">点击 + 按钮新增一个经典 L2CAP 通道。</string>
     <string name="ble_l2cap">BLE L2CAP</string>
     <string name="register">注册</string>
     <string name="unregister">取消注册</string>
@@ -92,4 +120,31 @@
     <string name="stop">停止</string>
     <string name="disable_not_allowed_message_android_13">Android 13 及以上限制应用关闭蓝牙，请在系统设置或快捷设置手动关闭。</string>
     <string name="disable_not_allowed_message_legacy">无法通过本应用关闭蓝牙，请在系统设置手动完成。</string>
+    <string name="bond_controls_title">配对控制</string>
+    <string name="bond_controls_subtitle">设置目标地址并触发配对操作。</string>
+    <string name="bond_create_action">创建配对</string>
+    <string name="bond_remove_action">移除配对</string>
+    <string name="bond_cycle_status_create">正在轮询创建/移除，剩余次数：%1$d</string>
+    <string name="bond_cycle_status_remove">正在轮询移除/创建，剩余次数：%1$d</string>
+    <string name="bond_devices_title">已配对设备</string>
+    <string name="bond_devices_subtitle">查看已配对设备并快速填入地址。</string>
+    <string name="bond_refresh">刷新</string>
+    <string name="bond_use_address">使用地址</string>
+    <string name="bond_bluetooth_not_supported">此设备不支持蓝牙适配器。</string>
+    <string name="bond_log_subtitle">查看配对事件和自动循环更新。</string>
+    <string name="bond_clear_log_confirmation">清空所有配对日志？</string>
+    <string name="bond_log_request_create">已请求为 %1$s 创建配对（循环 %2$d）。</string>
+    <string name="bond_log_request_remove">已请求为 %1$s 移除配对（循环 %2$d）。</string>
+    <string name="bond_log_bonded">%1$s 已完成配对。剩余循环 %2$d。</string>
+    <string name="bond_log_removed">%1$s 的配对已移除。剩余循环 %2$d。</string>
+    <string name="bond_log_adapter_unavailable">无法获取蓝牙适配器。</string>
+    <string name="bond_log_security_error">蓝牙操作被拒绝：%1$s</string>
+    <string name="bond_log_generic_error">蓝牙操作失败：%1$s</string>
 </resources>
+
+
+
+
+
+
+

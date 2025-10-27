@@ -64,7 +64,7 @@ fun SppCard(
             }
             Spacer(modifier = Modifier.height(12.dp))
             StatusRow(session = session)
-            val firstLogLine = session.log.lineSequence().firstOrNull()?.trim()
+            val firstLogLine = session.logEntries.firstOrNull()?.trim()
             if (!firstLogLine.isNullOrEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
