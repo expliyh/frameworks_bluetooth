@@ -128,7 +128,7 @@ profile_connection_state_t bt_hfp_hf_get_connection_state(bt_instance_t* ins, bt
     return packet.hfp_hf_r.profile_conn_state;
 }
 
-bt_status_t bt_hfp_hf_connect(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_connect(bt_instance_t* ins, bt_address_t* addr)
 {
     bt_message_packet_t packet;
     bt_status_t status;
@@ -143,7 +143,7 @@ bt_status_t bt_hfp_hf_connect(bt_instance_t* ins, bt_address_t* addr)
     return packet.hfp_hf_r.status;
 }
 
-bt_status_t bt_hfp_hf_disconnect(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_disconnect(bt_instance_t* ins, bt_address_t* addr)
 {
     bt_message_packet_t packet;
     bt_status_t status;
@@ -269,7 +269,7 @@ bt_status_t bt_hfp_hf_dial_memory(bt_instance_t* ins, bt_address_t* addr, uint32
     return packet.hfp_hf_r.status;
 }
 
-bt_status_t bt_hfp_hf_redial(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_redial(bt_instance_t* ins, bt_address_t* addr)
 {
     bt_message_packet_t packet;
     bt_status_t status;

@@ -123,7 +123,7 @@ static int connect_cmd(void* handle, int argc, char* argv[])
     if (bt_addr_str2ba(argv[0], &addr) < 0)
         return CMD_INVALID_ADDR;
 
-    if (bt_hfp_hf_connect(handle, &addr) != BT_STATUS_SUCCESS)
+    if (bt_framework_hfp_hf_connect(handle, &addr) != BT_STATUS_SUCCESS)
         return CMD_ERROR;
 
     return CMD_OK;
@@ -138,7 +138,7 @@ static int disconnect_cmd(void* handle, int argc, char* argv[])
     if (bt_addr_str2ba(argv[0], &addr) < 0)
         return CMD_INVALID_ADDR;
 
-    if (bt_hfp_hf_disconnect(handle, &addr) != BT_STATUS_SUCCESS)
+    if (bt_framework_hfp_hf_disconnect(handle, &addr) != BT_STATUS_SUCCESS)
         return CMD_ERROR;
 
     return CMD_OK;
@@ -284,7 +284,7 @@ static int redial_cmd(void* handle, int argc, char* argv[])
     if (bt_addr_str2ba(argv[0], &addr) < 0)
         return CMD_INVALID_ADDR;
 
-    if (bt_hfp_hf_redial(handle, &addr) != BT_STATUS_SUCCESS)
+    if (bt_framework_hfp_hf_redial(handle, &addr) != BT_STATUS_SUCCESS)
         return CMD_ERROR;
 
     return CMD_OK;

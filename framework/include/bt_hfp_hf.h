@@ -636,7 +636,7 @@ int app_init_hfp_hf_connection(bt_instance_t* ins, bt_address_t* addr);
 }
  * @endcode
  */
-bt_status_t BTSYMBOLS(bt_hfp_hf_connect)(bt_instance_t* ins, bt_address_t* addr);
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_connect)(bt_instance_t* ins, bt_address_t* addr);
 
 /**
  * @brief Disconnect from HFP service level connection.
@@ -661,7 +661,7 @@ int app_quit_hfp_hf_connection(bt_instance_t* ins, bt_address_t* addr);
 }
  * @endcode
  */
-bt_status_t BTSYMBOLS(bt_hfp_hf_disconnect)(bt_instance_t* ins, bt_address_t* addr);
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_disconnect)(bt_instance_t* ins, bt_address_t* addr);
 
 /**
  * @brief Set HF Connection policy.
@@ -882,7 +882,7 @@ int app_dial_last_number(bt_instance_t* ins, bt_address_t* addr);
 }
  * @endcode
  */
-bt_status_t BTSYMBOLS(bt_hfp_hf_redial)(bt_instance_t* ins, bt_address_t* addr);
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_redial)(bt_instance_t* ins, bt_address_t* addr);
 
 /**
  * @brief Accept the incoming voice call.

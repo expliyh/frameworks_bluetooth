@@ -297,11 +297,11 @@ void bt_socket_server_hfp_hf_process(service_poll_t* poll, int fd,
             &packet->hfp_hf_pl._bt_hfp_hf_get_connection_state.addr);
         break;
     case BT_HFP_HF_CONNECT:
-        packet->hfp_hf_r.status = BTSYMBOLS(bt_hfp_hf_connect)(ins,
+        packet->hfp_hf_r.status = BTSYMBOLS(bt_framework_hfp_hf_connect)(ins,
             &packet->hfp_hf_pl._bt_hfp_hf_connect.addr);
         break;
     case BT_HFP_HF_DISCONNECT:
-        packet->hfp_hf_r.status = BTSYMBOLS(bt_hfp_hf_disconnect)(ins,
+        packet->hfp_hf_r.status = BTSYMBOLS(bt_framework_hfp_hf_disconnect)(ins,
             &packet->hfp_hf_pl._bt_hfp_hf_disconnect.addr);
         break;
     case BT_HFP_HF_SET_CONNECTION_POLICY:
@@ -335,7 +335,7 @@ void bt_socket_server_hfp_hf_process(service_poll_t* poll, int fd,
             packet->hfp_hf_pl._bt_hfp_hf_dial_memory.memory);
         break;
     case BT_HFP_HF_REDIAL:
-        packet->hfp_hf_r.status = BTSYMBOLS(bt_hfp_hf_redial)(ins,
+        packet->hfp_hf_r.status = BTSYMBOLS(bt_framework_hfp_hf_redial)(ins,
             &packet->hfp_hf_pl._bt_hfp_hf_redial.addr);
         break;
     case BT_HFP_HF_ACCEPT_CALL:

@@ -79,14 +79,14 @@ profile_connection_state_t bt_hfp_hf_get_connection_state(bt_instance_t* ins, bt
     return BpBtHfpHf_getConnectionState(hf, addr);
 }
 
-bt_status_t bt_hfp_hf_connect(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_connect(bt_instance_t* ins, bt_address_t* addr)
 {
     BpBtHfpHf* hf = (BpBtHfpHf*)bluetooth_get_proxy(ins, PROFILE_HFP_HF);
 
     return BpBtHfpHf_connect(hf, addr);
 }
 
-bt_status_t bt_hfp_hf_disconnect(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_disconnect(bt_instance_t* ins, bt_address_t* addr)
 {
     BpBtHfpHf* hf = (BpBtHfpHf*)bluetooth_get_proxy(ins, PROFILE_HFP_HF);
 
@@ -135,7 +135,7 @@ bt_status_t bt_hfp_hf_dial_memory(bt_instance_t* ins, bt_address_t* addr, uint32
     return BpBtHfpHf_dialMemory(hf, addr, memory);
 }
 
-bt_status_t bt_hfp_hf_redial(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t bt_framework_hfp_hf_redial(bt_instance_t* ins, bt_address_t* addr)
 {
     BpBtHfpHf* hf = (BpBtHfpHf*)bluetooth_get_proxy(ins, PROFILE_HFP_HF);
 

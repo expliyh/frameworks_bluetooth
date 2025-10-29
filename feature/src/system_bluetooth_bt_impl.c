@@ -66,7 +66,7 @@ static bt_status_t bluetooth_connect_profiles(FeatureInstanceHandle feature, bt_
         break;
     case HFP_HF:
 #ifdef CONFIG_BLUETOOTH_HFP_HF
-        status = bt_hfp_hf_connect(bt_ins, addr);
+        status = bt_client_hfp_hf_connect(bt_ins, addr);
 #endif
         break;
     case HID_DEVICE:
@@ -112,7 +112,7 @@ static bt_status_t bluetooth_disconnect_profiles(FeatureInstanceHandle feature, 
         break;
     case HFP_HF:
 #ifdef CONFIG_BLUETOOTH_HFP_HF
-        status = bt_hfp_hf_disconnect(bt_ins, addr);
+        status = bt_framework_hfp_hf_disconnect(bt_ins, addr);
 #endif
         break;
     case HID_DEVICE:

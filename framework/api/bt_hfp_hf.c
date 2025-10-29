@@ -63,14 +63,14 @@ profile_connection_state_t BTSYMBOLS(bt_hfp_hf_get_connection_state)(bt_instance
     return profile->get_connection_state(addr);
 }
 
-bt_status_t BTSYMBOLS(bt_hfp_hf_connect)(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_connect)(bt_instance_t* ins, bt_address_t* addr)
 {
     hfp_hf_interface_t* profile = get_profile_service();
 
     return profile->connect(addr);
 }
 
-bt_status_t BTSYMBOLS(bt_hfp_hf_disconnect)(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_disconnect)(bt_instance_t* ins, bt_address_t* addr)
 {
     hfp_hf_interface_t* profile = get_profile_service();
 
@@ -126,7 +126,7 @@ bt_status_t BTSYMBOLS(bt_hfp_hf_dial_memory)(bt_instance_t* ins, bt_address_t* a
     return profile->dial_memory(addr, memory);
 }
 
-bt_status_t BTSYMBOLS(bt_hfp_hf_redial)(bt_instance_t* ins, bt_address_t* addr)
+bt_status_t BTSYMBOLS(bt_framework_hfp_hf_redial)(bt_instance_t* ins, bt_address_t* addr)
 {
     hfp_hf_interface_t* profile = get_profile_service();
 
