@@ -29,11 +29,12 @@
 #include <zephyr/bluetooth/classic/sdp.h>
 #include <zephyr/bluetooth/l2cap.h>
 #include <zephyr/net_buf.h>
+#include <zephyr/sys/atomic.h>
 
 
 static int max_connection = 0;
 static int pending_connection = 0;
-static bt_list_t* available_connections = NULL;
+// static bt_list_t* available_connections = NULL;
 static bt_list_t* pending_connections = NULL;
 
 uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
@@ -48,7 +49,9 @@ static struct bt_sdp_discover_params sdp_discover = {
 };
 
 typedef struct _bt_hfp_hf_connection {
+    bt_address_t* addr;
     struct bt_conn* conn; //TODO: Remove later
+    struct bt_hfp_hf_call* incoming_call;
     struct bt_hfp_hf *hf;
 } bt_hfp_hf_connection_t;
 
@@ -59,6 +62,16 @@ static void free_connection(void* p_data)
     bt_conn_unref(data->conn);
     free(data);
     return;
+}
+
+static bool find_connection_cb(void* p_data, void* context) {
+    bt_hfp_hf_connection_t* sal_conn = (bt_hfp_hf_connection_t*)p_data;
+    bt_address_t* addr = (bt_address_t*)context;
+    return !bt_addr_compare(sal_conn->addr, addr);
+}
+
+static bt_hfp_hf_connection_t* find_connection(bt_address_t* addr) {
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, find_connection_cb, addr);
 }
 
 static void cmp_connection(void* p_data, void* context) {
@@ -83,8 +96,10 @@ bt_status_t do_hf_connect(struct bt_conn *conn, uint16_t channel) {
         BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
         return BT_STATUS_FAIL;
     }
+    bt_sal_get_remote_address(conn, new_connection->addr);
     new_connection->conn = conn;
     new_connection->hf = hf;
+    new_connection->incoming_call = NULL;
 
     bt_list_add_tail(pending_connections, new_connection);
 
@@ -163,7 +178,7 @@ static struct bt_hfp_hf_cb hf_callbacks = {
 bt_status_t bt_sal_hfp_hf_init(uint32_t hf_features, uint8_t p_max_connection)
 {
     max_connection = p_max_connection;
-    available_connections = bt_list_new(free_connection);
+    // available_connections = bt_list_new(free_connection);
     pending_connections = bt_list_new(free_connection);
     SAL_CHECK_RET(bt_hfp_hf_register(&hf_callbacks), 0);
     return BT_STATUS_SUCCESS;
@@ -206,8 +221,9 @@ bt_status_t bt_sal_hfp_hf_disconnect_audio(bt_address_t* addr)
 
 bt_status_t bt_sal_hfp_hf_answer_call(bt_address_t* addr)
 {
-    printf("bt_sal_hfp_hf_answer_call: Currently not supported\n");
-    return BT_STATUS_UNSUPPORTED;
+    bt_hfp_hf_connection_t* sal_conn = find_connection(addr);
+    SAL_CHECK_RET(bt_hfp_hf_accept(sal_conn->incoming_call), 0);
+    return BT_STATUS_FAIL;
 }
 
 bt_status_t bt_sal_hfp_hf_reject_call(bt_address_t* addr)
