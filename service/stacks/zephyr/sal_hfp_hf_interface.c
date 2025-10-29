@@ -15,12 +15,158 @@
  ***************************************************************************/
 
 #include "sal_hfp_hf_interface.h"
+#include "sal_interface.h"
+#include "sal_zblue.h"
+#include "bt_debug.h"
 #include <stdio.h>
 
-bt_status_t bt_sal_hfp_hf_init(uint32_t hf_features, uint8_t max_connection)
+#undef BT_UUID_DECLARE_16
+#undef BT_UUID_DECLARE_32
+#undef BT_UUID_DECLARE_128
+
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/classic/hfp_hf.h>
+#include <zephyr/bluetooth/classic/sdp.h>
+#include <zephyr/bluetooth/l2cap.h>
+#include <zephyr/net_buf.h>
+
+
+static int max_connection = 0;
+static int pending_connection = 0;
+static bt_list_t* available_connections = NULL;
+static bt_list_t* pending_connections = NULL;
+
+uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
+
+NET_BUF_POOL_DEFINE(sdp_discover_pool, 10, BT_L2CAP_BUF_SIZE(CONFIG_BT_L2CAP_TX_MTU),
+		    CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
+
+static struct bt_sdp_discover_params sdp_discover = {
+	.func = on_sdp_done,
+	.pool = &sdp_discover_pool,
+	.uuid = BT_UUID_DECLARE_16(BT_SDP_HANDSFREE_SVCLASS),
+};
+
+typedef struct _bt_hfp_hf_connection {
+    struct bt_conn* conn; //TODO: Remove later
+    struct bt_hfp_hf *hf;
+} bt_hfp_hf_connection_t;
+
+static void free_connection(void* p_data)
 {
-    printf("bt_sal_hfp_hf_init: Currently not supported\n");
-    return BT_STATUS_UNSUPPORTED;
+    // Do not free the zblue connection object here. connection not only used in hfp.
+    bt_hfp_hf_connection_t* data = (bt_hfp_hf_connection_t*)p_data;
+    bt_conn_unref(data->conn);
+    free(data);
+    return;
+}
+
+static void cmp_connection(void* p_data, void* context) {
+    bt_hfp_hf_connection_t* data = (bt_hfp_hf_connection_t*)p_data;
+    struct bt_hfp_hf *hf = (struct bt_hfp_hf*)context;
+    if (data->hf == hf) {
+        BT_LOGD("%s, HFP HF connected callback for pending connection", __func__);
+    }
+}
+
+bt_status_t do_hf_connect(struct bt_conn *conn, uint16_t channel) {
+    struct bt_hfp_hf *hf = NULL;
+    
+    if(bt_hfp_hf_connect(conn, &hf, channel)){
+        BT_LOGE("%s, Failed to initiate HFP HF connection", __func__);
+        bt_conn_unref(conn);
+        return BT_STATUS_FAIL;
+    }
+
+    bt_hfp_hf_connection_t* new_connection = (bt_hfp_hf_connection_t*)zalloc(sizeof(bt_hfp_hf_connection_t));
+    if (new_connection == NULL) {
+        BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+        return BT_STATUS_FAIL;
+    }
+    new_connection->conn = conn;
+    new_connection->hf = hf;
+
+    bt_list_add_tail(pending_connections, new_connection);
+
+    return BT_STATUS_SUCCESS;
+}
+
+uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore)
+{
+    int err;
+    uint16_t value;
+
+    BT_LOGD("Discover done");
+
+    if (result->resp_buf != NULL) {
+        err = bt_sdp_get_proto_param(result->resp_buf, BT_SDP_PROTO_RFCOMM, &value);
+
+        if (err != 0) {
+            BT_LOGD("Fail to parser RFCOMM the SDP response!");
+        } else {
+            BT_LOGD("The server channel is %d", value);
+            err = do_hf_connect(conn, value);
+            if (err != 0) {
+                BT_LOGD("Fail to create hfp AG connection (err %d)", err);
+            }
+        }
+    }
+    return BT_SDP_DISCOVER_UUID_STOP;
+}
+
+// TODO: Error Processing
+static void on_hfp_hf_connected(struct bt_conn *conn, struct bt_hfp_hf *hf)
+{
+    bt_list_foreach(pending_connections, cmp_connection, hf);
+    pending_connection--;
+    bt_address_t bd_addr;
+    if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS)
+        return;
+    hfp_hf_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTED, 0, 0);
+}
+
+static struct bt_hfp_hf_cb hf_callbacks = {
+    .connected = on_hfp_hf_connected,
+    .disconnected = NULL,
+    .sco_connected = NULL,
+    .sco_disconnected = NULL,
+    .service = NULL,
+    .outgoing = NULL,
+    .remote_ringing = NULL,
+    .incoming = NULL,
+    .incoming_held = NULL,
+    .accept = NULL,
+    .reject = NULL,
+    .terminate = NULL,
+    .held = NULL,
+    .retrieve = NULL,
+    .signal = NULL,
+    .roam = NULL,
+    .battery = NULL,
+    .ring_indication = NULL,
+    .dialing = NULL,
+    .clip = NULL,
+    .vgm = NULL,
+    .vgs = NULL,
+    .inband_ring = NULL,
+    .operator = NULL,
+    .codec_negotiate = NULL,
+    .ecnr_turn_off = NULL,
+    .call_waiting = NULL,
+    .voice_recognition = NULL,
+    .vre_state = NULL,
+    .textual_representation = NULL,
+    .request_phone_number = NULL,
+    .subscriber_number = NULL,
+};
+
+bt_status_t bt_sal_hfp_hf_init(uint32_t hf_features, uint8_t p_max_connection)
+{
+    max_connection = p_max_connection;
+    available_connections = bt_list_new(free_connection);
+    pending_connections = bt_list_new(free_connection);
+    SAL_CHECK_RET(bt_hfp_hf_register(&hf_callbacks), 0);
+    return BT_STATUS_SUCCESS;
 }
 
 void bt_sal_hfp_hf_cleanup(void)
@@ -30,9 +176,15 @@ void bt_sal_hfp_hf_cleanup(void)
 
 bt_status_t bt_sal_hfp_hf_connect(bt_address_t* addr)
 {
-    printf("bt_sal_hfp_hf_connect: Currently not supported\n");
-    return BT_STATUS_UNSUPPORTED;
+    struct bt_conn* conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
+
+    if (!conn)
+        BT_LOGD("conn is null");
+    SAL_CHECK_RET(bt_sdp_discover(conn, &sdp_discover), 0);
+
+    return BT_STATUS_SUCCESS;
 }
+
 
 bt_status_t bt_sal_hfp_hf_disconnect(bt_address_t* addr)
 {
