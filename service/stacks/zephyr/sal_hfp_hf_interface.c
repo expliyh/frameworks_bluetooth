@@ -15,6 +15,7 @@
  ***************************************************************************/
 
 #include "sal_hfp_hf_interface.h"
+#include "sal_connection_manager.h"
 #include "sal_interface.h"
 #include "sal_zblue.h"
 #include "bt_debug.h"
@@ -31,10 +32,6 @@
 #include <zephyr/net_buf.h>
 #include <zephyr/sys/atomic.h>
 
-
-static int max_connection = 0;
-static int pending_connection = 0;
-// static bt_list_t* available_connections = NULL;
 static bt_list_t* pending_connections = NULL;
 
 uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
@@ -50,28 +47,39 @@ static struct bt_sdp_discover_params sdp_discover = {
 
 typedef struct _bt_hfp_hf_connection {
     bt_address_t* addr;
-    struct bt_conn* conn; //TODO: Remove later
-    struct bt_hfp_hf_call* incoming_call;
+    struct bt_conn* conn;
+    struct bt_list_t* incoming_calls;
     struct bt_hfp_hf *hf;
 } bt_hfp_hf_connection_t;
 
 static void free_connection(void* p_data)
 {
-    // Do not free the zblue connection object here. connection not only used in hfp.
     bt_hfp_hf_connection_t* data = (bt_hfp_hf_connection_t*)p_data;
     bt_conn_unref(data->conn);
     free(data);
     return;
 }
 
-static bool find_connection_cb(void* p_data, void* context) {
+static bool mem_addr_cmp(void* p_data, void* context) {
+    return p_data == context;
+}
+
+static bool bt_addr_cmp(void* p_data, void* context) {
     bt_hfp_hf_connection_t* sal_conn = (bt_hfp_hf_connection_t*)p_data;
     bt_address_t* addr = (bt_address_t*)context;
     return !bt_addr_compare(sal_conn->addr, addr);
 }
 
-static bt_hfp_hf_connection_t* find_connection(bt_address_t* addr) {
-    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, find_connection_cb, addr);
+static bt_hfp_hf_connection_t* find_connection_by_addr(bt_address_t* addr) {
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, bt_addr_cmp, addr);
+}
+
+static bt_hfp_hf_connection_t* find_connection_by_hf(struct bt_hfp_hf *hf) {
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, mem_addr_cmp, hf);
+}
+
+static bt_hfp_hf_connection_t* find_connection_by_conn(struct bt_conn* conn) {
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, mem_addr_cmp, conn);
 }
 
 static void cmp_connection(void* p_data, void* context) {
@@ -132,12 +140,39 @@ uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, c
 // TODO: Error Processing
 static void on_hfp_hf_connected(struct bt_conn *conn, struct bt_hfp_hf *hf)
 {
-    bt_list_foreach(pending_connections, cmp_connection, hf);
+    BT_LOGD("%s, HFP HF connected", __func__);
     pending_connection--;
     bt_address_t bd_addr;
     if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS)
         return;
+    if (!find_connection(&bd_addr)) {
+            bt_hfp_hf_connection_t* new_connection = (bt_hfp_hf_connection_t*)zalloc(sizeof(bt_hfp_hf_connection_t));
+        if (new_connection == NULL) {
+            BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+            return BT_STATUS_FAIL;
+        }
+        bt_sal_get_remote_address(conn, new_connection->addr);
+        new_connection->conn = conn;
+        new_connection->hf = hf;
+        new_connection->incoming_call = NULL;
+
+        bt_list_add_tail(pending_connections, new_connection);
+    }
     hfp_hf_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTED, 0, 0);
+}
+
+static void hfp_hf_on_incoming_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_call *call)
+{
+    bt_address_t bd_addr;
+
+    BT_LOGD("%s, HFP HF incoming call", __func__);
+
+    if (bt_sal_get_remote_address(find_connection_by_hf(hf)->conn, &bd_addr) != BT_STATUS_SUCCESS){
+        BT_LOGE("%s, Failed to get remote address", __func__);
+        return;
+    }
+    hfp_hf_on_call_setup_state_changed(&bd_addr, 1);
+    return;
 }
 
 static struct bt_hfp_hf_cb hf_callbacks = {
@@ -148,7 +183,7 @@ static struct bt_hfp_hf_cb hf_callbacks = {
     .service = NULL,
     .outgoing = NULL,
     .remote_ringing = NULL,
-    .incoming = NULL,
+    .incoming = hfp_hf_on_incoming_call,
     .incoming_held = NULL,
     .accept = NULL,
     .reject = NULL,
@@ -189,12 +224,22 @@ void bt_sal_hfp_hf_cleanup(void)
     printf("bt_sal_hfp_hf_cleanup: Currently not supported\n");
 }
 
+bt_status_t pre_hfp_hf_connect()
+{
+    return BT_STATUS_UNSUPPORTED;
+}
+
 bt_status_t bt_sal_hfp_hf_connect(bt_address_t* addr)
 {
-    struct bt_conn* conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
+    struct bt_conn* conn = bt_conn_lookup_addr_br(addr);
 
-    if (!conn)
-        BT_LOGD("conn is null");
+    if (!conn){
+        BT_LOGW("%s, acl not conneted, try connect\n", __func__);
+        if (bt_sal_connect(0, addr) != BT_STATUS_SUCCESS)
+            return BT_STATUS_FAIL;
+        conn = bt_conn_lookup_addr_br(addr);
+    }
+
     SAL_CHECK_RET(bt_sdp_discover(conn, &sdp_discover), 0);
 
     return BT_STATUS_SUCCESS;
