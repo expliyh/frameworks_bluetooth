@@ -30,12 +30,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import com.openvela.bluetoothtest.R
 
 enum class MainMenuSection(@StringRes val titleRes: Int) {
@@ -115,10 +117,34 @@ fun MainRoute(
     destinations: List<MainDestination>,
     onOpenDestination: (MainDestination) -> Unit
 ) {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val sectionUiModels = remember(destinations, context, configuration) {
+        MainMenuSection.entries.mapNotNull { section ->
+            val sectionItems = destinations.filter { it.section == section }
+            if (sectionItems.isEmpty()) {
+                null
+            } else {
+                val items = sectionItems.map { destination ->
+                    MainMenuItemUiModel(
+                        destination = destination,
+                        title = context.getString(destination.titleRes),
+                        description = context.getString(destination.descriptionRes)
+                    )
+                }
+                SectionUiModel(
+                    section = section,
+                    title = context.getString(section.titleRes),
+                    items = items
+                )
+            }
+        }
+    }
+    val appTitle = remember(context, configuration) { context.getString(R.string.app_name) }
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = stringResource(id = R.string.app_name)) }
+                title = { Text(text = appTitle) }
             )
         }
     ) { innerPadding ->
@@ -129,23 +155,21 @@ fun MainRoute(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            MainMenuSection.entries.forEach { section ->
-                val sectionItems = destinations.filter { it.section == section }
-                if (sectionItems.isEmpty()) return@forEach
+            sectionUiModels.forEach { section ->
 
-                item(key = "${section.name}_header") {
-                    SectionHeader(section = section)
+                item(key = "${section.section.name}_header") {
+                    SectionHeader(title = section.title)
                 }
                 items(
-                    items = sectionItems,
-                    key = { destination -> destination.id }
-                ) { destination ->
+                    items = section.items,
+                    key = { item -> item.destination.id }
+                ) { item ->
                     MainMenuCard(
-                        destination = destination,
-                        onClick = { onOpenDestination(destination) }
+                        item = item,
+                        onClick = { onOpenDestination(item.destination) }
                     )
                 }
-                item(key = "${section.name}_footer_spacer") {
+                item(key = "${section.section.name}_footer_spacer") {
                     Spacer(modifier = Modifier.height(4.dp))
                 }
             }
@@ -154,9 +178,9 @@ fun MainRoute(
 }
 
 @Composable
-private fun SectionHeader(section: MainMenuSection) {
+private fun SectionHeader(title: String) {
     Text(
-        text = stringResource(id = section.titleRes),
+        text = title,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(horizontal = 4.dp)
@@ -165,7 +189,7 @@ private fun SectionHeader(section: MainMenuSection) {
 
 @Composable
 private fun MainMenuCard(
-    destination: MainDestination,
+    item: MainMenuItemUiModel,
     onClick: () -> Unit
 ) {
     Card(
@@ -173,12 +197,12 @@ private fun MainMenuCard(
         onClick = onClick,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        RowContent(destination = destination)
+        RowContent(item = item)
     }
 }
 
 @Composable
-private fun RowContent(destination: MainDestination) {
+private fun RowContent(item: MainMenuItemUiModel) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -187,17 +211,17 @@ private fun RowContent(destination: MainDestination) {
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Icon(
-            imageVector = destination.icon,
+            imageVector = item.destination.icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = stringResource(id = destination.titleRes),
+                text = item.title,
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
-                text = stringResource(id = destination.descriptionRes),
+                text = item.description,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
@@ -212,3 +236,15 @@ private fun RowContent(destination: MainDestination) {
         )
     }
 }
+
+private data class MainMenuItemUiModel(
+    val destination: MainDestination,
+    val title: String,
+    val description: String
+)
+
+private data class SectionUiModel(
+    val section: MainMenuSection,
+    val title: String,
+    val items: List<MainMenuItemUiModel>
+)

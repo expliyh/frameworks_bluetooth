@@ -1,30 +1,24 @@
 package com.openvela.bluetoothtest.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
-import androidx.wear.compose.material.AutoCenteringParams
+import androidx.compose.ui.unit.dp
 import androidx.wear.compose.material.Chip
 import androidx.wear.compose.material.ChipDefaults
 import androidx.wear.compose.material.Icon
 import androidx.wear.compose.material.MaterialTheme
-import androidx.wear.compose.material.ScalingLazyColumn
-import androidx.wear.compose.material.ScalingLazyListAnchorType
 import androidx.wear.compose.material.Text
-import androidx.wear.compose.material.TimeText
-import androidx.wear.compose.material.Vignette
-import androidx.wear.compose.material.VignettePosition
-import androidx.wear.compose.material.rememberScalingLazyListState
-import androidx.wear.compose.material.Scaffold
-import androidx.wear.compose.material.items
 import com.openvela.bluetoothtest.R
 
 @Composable
@@ -33,62 +27,71 @@ fun MainWearRoute(
     onOpenDestination: (MainDestination) -> Unit
 ) {
     MaterialTheme {
-        val hasDestinations = destinations.isNotEmpty()
-        val centeredIndex = if (hasDestinations) 1 else 0
-        val listState = rememberScalingLazyListState(initialCenterItemIndex = centeredIndex)
-        LaunchedEffect(centeredIndex) {
-            listState.scrollToItem(centeredIndex)
+        val scrollState = rememberScrollState()
+        val chipColors = ChipDefaults.primaryChipColors()
+        val context = LocalContext.current
+        val destinationItems = remember(destinations, context) {
+            destinations.map { destination ->
+                WearDestinationUiModel(
+                    destination = destination,
+                    title = context.getString(destination.titleRes),
+                    description = context.getString(destination.descriptionRes)
+                )
+            }
         }
-        Scaffold(
-            timeText = { TimeText() },
-            vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) }
+        val appName = remember(context) { context.getString(R.string.app_name) }
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+                .padding(horizontal = 8.dp, vertical = 12.dp)
         ) {
-            ScalingLazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                state = listState,
-                anchorType = ScalingLazyListAnchorType.ItemCenter,
-                autoCentering = AutoCenteringParams(itemIndex = centeredIndex)
-            ) {
-                item(key = "wear_title") {
-                    Text(
-                        text = stringResource(id = R.string.app_name),
-                        style = MaterialTheme.typography.title2,
-                        color = MaterialTheme.colors.primary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 4.dp)
-                    )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = appName,
+                style = MaterialTheme.typography.title2,
+                color = MaterialTheme.colors.primary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            destinationItems.forEachIndexed { index, item ->
+                if (index > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
-                items(destinations.size, key = { destinations[it].id }) { index ->
-                    val destination = destinations[index]
-                    Chip(
-                        onClick = { onOpenDestination(destination) },
-                        label = {
-                            Text(
-                                text = stringResource(id = destination.titleRes),
-                                style = MaterialTheme.typography.body1
-                            )
-                        },
-                        secondaryLabel = {
-                            Text(
-                                text = stringResource(id = destination.descriptionRes),
-                                style = MaterialTheme.typography.caption3
-                            )
-                        },
-                        icon = {
-                            Icon(
-                                imageVector = destination.icon,
-                                contentDescription = null,
-                                modifier = Modifier.padding(end = 4.dp)
-                            )
-                        },
-                        colors = ChipDefaults.primaryChipColors()
-                    )
-                }
+                Chip(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { onOpenDestination(item.destination) },
+                    label = {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.body1
+                        )
+                    },
+                    secondaryLabel = {
+                        Text(
+                            text = item.description,
+                            style = MaterialTheme.typography.caption3
+                        )
+                    },
+                    icon = {
+                        Icon(
+                            imageVector = item.destination.icon,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    },
+                    colors = chipColors
+                )
             }
         }
     }
 }
+
+private data class WearDestinationUiModel(
+    val destination: MainDestination,
+    val title: String,
+    val description: String
+)
