@@ -14,6 +14,7 @@
  * limitations under the License.
  ***************************************************************************/
 
+ #include "service_loop.h"
 #include "sal_hfp_hf_interface.h"
 #include "sal_connection_manager.h"
 #include "sal_interface.h"
@@ -48,14 +49,16 @@ static struct bt_sdp_discover_params sdp_discover = {
 typedef struct _bt_hfp_hf_connection {
     bt_address_t* addr;
     struct bt_conn* conn;
-    struct bt_list_t* incoming_calls;
+    struct bt_hfp_hf_call *incoming_call;
+    struct bt_list_t* held_calls;
+    struct bt_list_t* active_calls;
     struct bt_hfp_hf *hf;
 } bt_hfp_hf_connection_t;
 
 static void free_connection(void* p_data)
 {
     bt_hfp_hf_connection_t* data = (bt_hfp_hf_connection_t*)p_data;
-    bt_conn_unref(data->conn);
+    // bt_conn_unref(data->conn);
     free(data);
     return;
 }
@@ -64,18 +67,24 @@ static bool mem_addr_cmp(void* p_data, void* context) {
     return p_data == context;
 }
 
-static bool bt_addr_cmp(void* p_data, void* context) {
+static bool sal_bt_hfp_hf_cmp(void* p_data, void* context) {
+    bt_hfp_hf_connection_t* sal_conn = (bt_hfp_hf_connection_t*)p_data;
+    struct bt_hfp_hf* hf = (struct bt_hfp_hf*)context;
+    return sal_conn->hf == hf;
+}
+
+static bool sal_bt_addr_cmp(void* p_data, void* context) {
     bt_hfp_hf_connection_t* sal_conn = (bt_hfp_hf_connection_t*)p_data;
     bt_address_t* addr = (bt_address_t*)context;
     return !bt_addr_compare(sal_conn->addr, addr);
 }
 
 static bt_hfp_hf_connection_t* find_connection_by_addr(bt_address_t* addr) {
-    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, bt_addr_cmp, addr);
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, sal_bt_addr_cmp, addr);
 }
 
 static bt_hfp_hf_connection_t* find_connection_by_hf(struct bt_hfp_hf *hf) {
-    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, mem_addr_cmp, hf);
+    return (bt_hfp_hf_connection_t*)bt_list_find(pending_connections, sal_bt_hfp_hf_cmp, hf);
 }
 
 static bt_hfp_hf_connection_t* find_connection_by_conn(struct bt_conn* conn) {
@@ -128,7 +137,8 @@ uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, c
             BT_LOGD("Fail to parser RFCOMM the SDP response!");
         } else {
             BT_LOGD("The server channel is %d", value);
-            err = do_hf_connect(conn, value);
+            err = 0;
+            do_hf_connect(conn, value);
             if (err != 0) {
                 BT_LOGD("Fail to create hfp AG connection (err %d)", err);
             }
@@ -140,13 +150,14 @@ uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, c
 // TODO: Error Processing
 static void on_hfp_hf_connected(struct bt_conn *conn, struct bt_hfp_hf *hf)
 {
-    BT_LOGD("%s, HFP HF connected", __func__);
-    pending_connection--;
+    BT_LOGD("%s, HFP HF connected, hf=%d", __func__, hf);
+    // pending_connection--;
     bt_address_t bd_addr;
     if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS)
         return;
-    if (!find_connection(&bd_addr)) {
+    if (!find_connection_by_addr(&bd_addr)) {
             bt_hfp_hf_connection_t* new_connection = (bt_hfp_hf_connection_t*)zalloc(sizeof(bt_hfp_hf_connection_t));
+            new_connection->addr = (bt_address_t*)zalloc(sizeof(bt_address_t));
         if (new_connection == NULL) {
             BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
             return BT_STATUS_FAIL;
@@ -158,21 +169,23 @@ static void on_hfp_hf_connected(struct bt_conn *conn, struct bt_hfp_hf *hf)
 
         bt_list_add_tail(pending_connections, new_connection);
     }
+    hfp_hf_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTING, 0, 0);
     hfp_hf_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTED, 0, 0);
 }
 
 static void hfp_hf_on_incoming_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_call *call)
 {
-    bt_address_t bd_addr;
+    bt_address_t *bd_addr = zalloc(sizeof(bt_address_t));
 
-    BT_LOGD("%s, HFP HF incoming call", __func__);
+    BT_LOGD("%s, HFP HF incoming call, hf=%d", __func__, hf);
 
-    if (bt_sal_get_remote_address(find_connection_by_hf(hf)->conn, &bd_addr) != BT_STATUS_SUCCESS){
-        BT_LOGE("%s, Failed to get remote address", __func__);
+    bt_hfp_hf_connection_t* conn = find_connection_by_hf(hf);
+    if (!conn) {
+        BT_LOGE("%s, Failed to find connection", __func__);
         return;
     }
-    hfp_hf_on_call_setup_state_changed(&bd_addr, 1);
-    return;
+    bt_sal_get_remote_address(conn->conn, bd_addr);
+    hfp_hf_on_call_setup_state_changed(bd_addr, 1);
 }
 
 static struct bt_hfp_hf_cb hf_callbacks = {
@@ -212,7 +225,7 @@ static struct bt_hfp_hf_cb hf_callbacks = {
 
 bt_status_t bt_sal_hfp_hf_init(uint32_t hf_features, uint8_t p_max_connection)
 {
-    max_connection = p_max_connection;
+    // max_connection = p_max_connection;
     // available_connections = bt_list_new(free_connection);
     pending_connections = bt_list_new(free_connection);
     SAL_CHECK_RET(bt_hfp_hf_register(&hf_callbacks), 0);
@@ -266,7 +279,7 @@ bt_status_t bt_sal_hfp_hf_disconnect_audio(bt_address_t* addr)
 
 bt_status_t bt_sal_hfp_hf_answer_call(bt_address_t* addr)
 {
-    bt_hfp_hf_connection_t* sal_conn = find_connection(addr);
+    bt_hfp_hf_connection_t* sal_conn = find_connection_by_addr(addr);
     SAL_CHECK_RET(bt_hfp_hf_accept(sal_conn->incoming_call), 0);
     return BT_STATUS_FAIL;
 }
