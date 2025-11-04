@@ -218,6 +218,95 @@ static void zblue_on_subscriber_number(struct bt_hfp_hf *hf, const char *number,
     hfp_hf_on_subscriber_number_response(bd_addr, number, fw_service);
 }
 
+static void zblue_on_current_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_current_call *call){
+    bt_hfp_hf_connection_t* conn = find_connection_by_hf(hf);
+    if (!conn) {
+        BT_LOGE("%s, Failed to find connection", __func__);
+        return;
+    }
+    bt_address_t* bd_addr = zalloc(sizeof(bt_address_t));
+    bt_sal_get_remote_address(conn->conn, bd_addr);
+
+    if (!call) {
+        hfp_hf_on_current_call_response(
+            bd_addr,
+            0,
+            0,
+            0,
+            0,
+            NULL,
+            0
+        );
+        return;
+    }
+
+    uint32_t idx = call->index;
+    hfp_call_direction_t dir = 0;
+    switch (call->dir)
+    {
+    case BT_HFP_HF_CALL_DIR_OUTGOING:
+        dir = HFP_CALL_DIRECTION_OUTGOING;
+        break;
+    case BT_HFP_HF_CALL_DIR_INCOMING:
+        dir = HFP_CALL_DIRECTION_INCOMING;
+        break;
+    default:
+        BT_LOGW("%s, Unknown direction: %d", __func__, call->dir);
+        break;
+    }
+    hfp_hf_call_state_t status = 0;
+    switch (call->status)
+    {
+    case BT_HFP_HF_CALL_STATUS_ACTIVE:
+        status = HFP_HF_CALL_STATE_ACTIVE;
+        break;
+    case BT_HFP_HF_CALL_STATUS_HELD:
+        status = HFP_HF_CALL_STATE_HELD;
+        break;
+    case BT_HFP_HF_CALL_STATUS_DIALING:
+        status = HFP_HF_CALL_STATE_DIALING;
+        break;
+    case BT_HFP_HF_CALL_STATUS_ALERTING:
+        status = HFP_HF_CALL_STATE_ALERTING;
+        break;
+    case BT_HFP_HF_CALL_STATUS_INCOMING:
+        status = HFP_HF_CALL_STATE_INCOMING;
+        break;
+    case BT_HFP_HF_CALL_STATUS_WAITING:
+        status = HFP_HF_CALL_STATE_WAITING;
+        break;
+    case BT_HFP_HF_CALL_STATUS_INCOMING_HELD:
+        status = HFP_HF_CALL_STATE_HELD_BY_RESP_HOLD;
+        break;
+    default:
+        BT_LOGW("%s, Unknown status: %d", __func__, call->status);
+        break;
+    }
+    hfp_call_mpty_type_t mpty = 0;
+    switch (call->multiparty)
+    {
+    case false:
+        mpty = HFP_CALL_MPTY_TYPE_SINGLE;
+        break;
+    case true:
+        mpty = HFP_CALL_MPTY_TYPE_MULTI;
+        break;
+    default:
+        BT_LOGW("%s, Unknown multiparty: %d", __func__, call->multiparty);
+        break;
+    }
+
+    hfp_hf_on_current_call_response(
+        bd_addr,
+        call->index,
+        dir,
+        status,
+        mpty,
+        call->number, 
+        call->type,
+    )
+}
+
 static struct bt_hfp_hf_cb hf_callbacks = {
     .connected = on_hfp_hf_connected,
     .disconnected = NULL,
@@ -251,6 +340,7 @@ static struct bt_hfp_hf_cb hf_callbacks = {
     .textual_representation = NULL,
     .request_phone_number = NULL,
     .subscriber_number = zblue_on_subscriber_number,
+    .query_call = zblue_on_current_call,
 };
 
 bt_status_t bt_sal_hfp_hf_init(uint32_t hf_features, uint8_t p_max_connection)
@@ -334,14 +424,16 @@ bt_status_t bt_sal_hfp_hf_hangup_call(bt_address_t* addr)
 
 bt_status_t bt_sal_hfp_hf_dial_number(bt_address_t* addr, const char* number)
 {
-    printf("bt_sal_hfp_hf_dial_number: Currently not supported\n");
-    return BT_STATUS_UNSUPPORTED;
+    bt_hfp_hf_connection_t* sal_conn = find_connection_by_addr(addr);
+    SAL_CHECK_RET(bt_hfp_hf_number_call(sal_conn->hf, number), 0);
+    return BT_STATUS_SUCCESS;
 }
 
 bt_status_t bt_sal_hfp_hf_dial_memory(bt_address_t* addr, uint32_t memory)
 {
-    printf("bt_sal_hfp_hf_dial_memory: Currently not supported\n");
-    return BT_STATUS_UNSUPPORTED;
+    bt_hfp_hf_connection_t* sal_conn = find_connection_by_addr(addr);
+    SAL_CHECK_RET(bt_hfp_hf_memory_dial(sal_conn->hf, memory), 0);
+    return BT_STATUS_SUCCESS;
 }
 
 bt_status_t bt_sal_hfp_hf_call_control(bt_address_t* addr, hfp_call_control_t chld, uint32_t index)
