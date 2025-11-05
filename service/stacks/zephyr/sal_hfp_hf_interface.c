@@ -17,6 +17,7 @@
  #include "service_loop.h"
 #include "sal_hfp_hf_interface.h"
 #include "sal_connection_manager.h"
+#include "sal_hfp_internal.h"
 #include "sal_interface.h"
 #include "sal_zblue.h"
 #include "bt_debug.h"
@@ -45,6 +46,13 @@ static struct bt_sdp_discover_params sdp_discover = {
 	.pool = &sdp_discover_pool,
 	.uuid = BT_UUID_DECLARE_16(BT_SDP_HANDSFREE_SVCLASS),
 };
+
+typedef struct {
+    char number[32];
+    uint8_t type;
+    hfp_hf_call_state_t state;
+    struct bt_hfp_hf_call* session;
+} zblue_call_t;
 
 typedef struct _bt_hfp_hf_connection {
     bt_address_t* addr;
@@ -99,20 +107,31 @@ static void cmp_connection(void* p_data, void* context) {
     }
 }
 
-bt_status_t do_hf_connect(struct bt_conn *conn, uint16_t channel) {
+typedef struct _do_hf_connect_params {
+    struct bt_conn *conn;
+    uint16_t channel;
+} do_hf_connect_params_t;
+
+static void do_hf_connect(do_hf_connect_params_t *params)
+{
+    struct bt_conn *conn = params->conn;
+    uint16_t channel = params->channel;
+    free(params);
     struct bt_hfp_hf *hf = NULL;
-    
-    if(bt_hfp_hf_connect(conn, &hf, channel)){
+
+    if (bt_hfp_hf_connect(conn, &hf, channel)) {
         BT_LOGE("%s, Failed to initiate HFP HF connection", __func__);
         bt_conn_unref(conn);
-        return BT_STATUS_FAIL;
+        return;
     }
 
-    bt_hfp_hf_connection_t* new_connection = (bt_hfp_hf_connection_t*)zalloc(sizeof(bt_hfp_hf_connection_t));
-    if (new_connection == NULL) {
+    bt_hfp_hf_connection_t *new_connection =
+        (bt_hfp_hf_connection_t *)zalloc(sizeof(bt_hfp_hf_connection_t));
+    if (!new_connection) {
         BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
-        return BT_STATUS_FAIL;
+        return;
     }
+
     bt_sal_get_remote_address(conn, new_connection->addr);
     new_connection->conn = conn;
     new_connection->hf = hf;
@@ -120,8 +139,9 @@ bt_status_t do_hf_connect(struct bt_conn *conn, uint16_t channel) {
 
     bt_list_add_tail(pending_connections, new_connection);
 
-    return BT_STATUS_SUCCESS;
+    BT_LOGI("%s, HFP HF connection established successfully", __func__);
 }
+
 
 uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore)
 {
@@ -138,9 +158,17 @@ uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, c
         } else {
             BT_LOGD("The server channel is %d", value);
             err = 0;
-            do_hf_connect(conn, value);
+            do_hf_connect_params_t* params = (do_hf_connect_params_t*)zalloc(sizeof(do_hf_connect_params_t));
+            if (params == NULL) {
+                BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+                return -1;
+            }
+            params->conn = conn;
+            params->channel = value;
+            CALL_IN_SERVICE(do_hf_connect, params);
+            params = NULL;
             if (err != 0) {
-                BT_LOGD("Fail to create hfp AG connection (err %d)", err);
+                BT_LOGD("Fail to create hfp connection (err %d)", err);
             }
         }
     }
@@ -303,8 +331,8 @@ static void zblue_on_current_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_current
         status,
         mpty,
         call->number, 
-        call->type,
-    )
+        call->type
+    );
 }
 
 static struct bt_hfp_hf_cb hf_callbacks = {
