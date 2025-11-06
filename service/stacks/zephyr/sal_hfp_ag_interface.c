@@ -229,7 +229,7 @@ bt_status_t bt_sal_hfp_ag_init(uint32_t features, uint8_t max_connection)
     (void)features;
     (void)max_connection;
 
-    bt_hfp_ag_register_cb(&g_hfp_ag_cb);
+    bt_hfp_ag_register(&g_hfp_ag_cb);
     return BT_STATUS_SUCCESS;
 }
 
