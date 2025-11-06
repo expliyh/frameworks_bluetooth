@@ -392,13 +392,13 @@ bt_status_t pre_hfp_hf_connect()
 
 bt_status_t bt_sal_hfp_hf_connect(bt_address_t* addr)
 {
-    struct bt_conn* conn = bt_conn_lookup_addr_br(addr);
+    struct bt_conn* conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
 
     if (!conn){
         BT_LOGW("%s, acl not conneted, try connect\n", __func__);
         if (bt_sal_connect(0, addr) != BT_STATUS_SUCCESS)
             return BT_STATUS_FAIL;
-        conn = bt_conn_lookup_addr_br(addr);
+        conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
     }
 
     SAL_CHECK_RET(bt_sdp_discover(conn, &sdp_discover), 0);
@@ -460,7 +460,10 @@ bt_status_t bt_sal_hfp_hf_dial_number(bt_address_t* addr, const char* number)
 bt_status_t bt_sal_hfp_hf_dial_memory(bt_address_t* addr, uint32_t memory)
 {
     bt_hfp_hf_connection_t* sal_conn = find_connection_by_addr(addr);
-    SAL_CHECK_RET(bt_hfp_hf_memory_dial(sal_conn->hf, memory), 0);
+    char mem_in_str[11];
+
+    snprintf(&mem_in_str, sizeof(mem_in_str), "%u", memory);
+    SAL_CHECK_RET(bt_hfp_hf_memory_dial(sal_conn->hf, &mem_in_str), 0);
     return BT_STATUS_SUCCESS;
 }
 

@@ -16,6 +16,8 @@
 
 #include "service_loop.h"
 
+#define STACK_CALL(func) zblue_##func
+
 #define CALL_IN_SERVICE(func, data)                   \
     do {                                              \
         assert((func) != NULL);                       \
