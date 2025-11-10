@@ -132,8 +132,8 @@ static void ag_connected(struct bt_conn *conn, struct bt_hfp_ag *ag)
         return;
     }
     if (!find_connection_by_addr(&bd_addr)) {
-            bt_hfp_ag_connection_t* new_connection = (bt_hfp_ag_connection_t*)zalloc(sizeof(bt_hfp_ag_connection_t));
-            new_connection->addr = (bt_address_t*)zalloc(sizeof(bt_address_t));
+        bt_hfp_ag_connection_t* new_connection = (bt_hfp_ag_connection_t*)zalloc(sizeof(bt_hfp_ag_connection_t));
+        new_connection->addr = (bt_address_t*)zalloc(sizeof(bt_address_t));
         if (new_connection == NULL) {
             BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
             return BT_STATUS_FAIL;
@@ -244,7 +244,7 @@ static void ag_incoming(struct bt_hfp_ag *ag, struct bt_hfp_ag_call *call, const
 
         bt_list_add_tail(conn->calls, sal_call);
         BT_LOGD("%s, Add new incoming call", __func__);
-}
+    }
 
     if (
         sal_call->state != HFP_AG_CALL_STATE_INCOMING
@@ -563,7 +563,121 @@ bt_status_t bt_sal_hfp_ag_phone_state_change(bt_address_t* addr, uint8_t num_act
     hfp_call_addrtype_t type, const char* number,
     const char* name)
 {
-    (void)addr;
+    bt_hfp_ag_connection_t* conn = find_connection_by_addr(addr);
+    bt_hfp_ag_call_t* call = find_call_by_number(conn, number);
+    if (!call) {
+        call = (bt_hfp_ag_call_t*)zalloc(sizeof(bt_hfp_ag_call_t));
+        if (!call) {
+            BT_LOGE("%s, Failed to allocate memory for new call", __func__);
+            return BT_STATUS_FAIL;
+        }
+        strncpy(call->number, number, sizeof(call->number) - 1);
+        call->state = call_state;
+        bt_list_add_tail(on_going_calls, call);
+    } else {
+        // call->state = call_state;
+    }
+    if (!conn) {
+        BT_LOGE("%s, Failed to find connection", __func__);
+        return BT_STATUS_FAIL;
+    }
+    BT_LOGD("%s, num_active=%d, num_held=%d, call_state=%d, type=%d, number=%s, name=%s",
+        __func__, num_active, num_held, call_state, type, number, name);
+    
+    switch (call_state){
+        case HFP_AG_CALL_STATE_ACTIVE:
+            if (!call->session){
+                BT_LOGE("%s:%d, call session is NULL, ignore", __func__, __LINE__);
+                break;
+            }
+            if (call->state == HFP_AG_CALL_STATE_HELD){
+                SAL_CHECK_RET(bt_hfp_ag_retrieve(call->session), 0);
+            } else if (call->state == HFP_AG_CALL_STATE_INCOMING) {
+                SAL_CHECK_RET(bt_hfp_ag_accept(call->session), 0);
+                break;
+            } else if (
+                call->state == HFP_AG_CALL_STATE_DIALING
+                || call->state == HFP_AG_CALL_STATE_ALERTING
+            ) {
+                SAL_CHECK_RET(bt_hfp_ag_remote_accept(call->session), 0);
+                break;
+            } else {
+                BT_LOGE("%s:%d, previous call state is not correct", __func__, __LINE__);
+            }
+            break;
+        case HFP_AG_CALL_STATE_HELD:
+            if (!call->session){
+                BT_LOGE("%s:%d, call session is NULL, ignore", __func__, __LINE__);
+                break;
+            }
+            if (call->state == HFP_AG_CALL_STATE_ACTIVE){
+                SAL_CHECK_RET(bt_hfp_ag_hold(call->session), 0);
+            } else if (call->state == HFP_AG_CALL_STATE_INCOMING) {
+                SAL_CHECK_RET(bt_hfp_ag_hold_incoming(call->session), 0);
+                break;
+            } else {
+                BT_LOGE("%s:%d, previous call state is not correct", __func__, __LINE__);
+            }
+            break;
+        case HFP_AG_CALL_STATE_DIALING:
+            if (call->session){
+                BT_LOGD("%s:%d, outgoing call already exist", __func__, __LINE__);
+                break;
+            }
+            call_state = HFP_AG_CALL_STATE_DIALING;
+            SAL_CHECK_RET(bt_hfp_ag_outgoing(conn->ag, number), 0);
+            break;
+        case HFP_AG_CALL_STATE_ALERTING:
+            if (!call->session){
+                BT_LOGE("%s:%d, no call exist", __func__, __LINE__);
+                break;
+            }
+            SAL_CHECK_RET(bt_hfp_ag_remote_ringing(call->session), 0);
+            break;
+        case HFP_AG_CALL_STATE_INCOMING:
+            if (call->session){
+                BT_LOGD("%s:%d, incoming call already exist", __func__, __LINE__);
+                break;
+            }
+            call->state = HFP_AG_CALL_STATE_INCOMING;
+            SAL_CHECK_RET(bt_hfp_ag_remote_incoming(conn->ag, number), 0);
+            break;
+        case HFP_AG_CALL_STATE_WAITING:
+            if (call->session) {
+                BT_LOGD("%s:%d, incoming call already exist", __func__, __LINE__);
+                break;
+            }
+            call->state = HFP_AG_CALL_STATE_WAITING;
+            SAL_CHECK_RET(bt_hfp_ag_remote_incoming(conn->ag, number), 0);
+            break;
+        case HFP_AG_CALL_STATE_IDLE:
+        case HFP_AG_CALL_STATE_DISCONNECTED:
+            if (!call->session){
+                BT_LOGE("%s:%d, call session is NULL, ignore", __func__, __LINE__);
+                break;
+            }
+            if (
+                call->state == HFP_AG_CALL_STATE_ACTIVE
+                || call->state == HFP_AG_CALL_STATE_HELD
+            ){
+                SAL_CHECK_RET(bt_hfp_ag_terminate(call->session), 0); 
+            } else if (
+                call->state == HFP_AG_CALL_STATE_INCOMING
+                || call->state == HFP_AG_CALL_STATE_WAITING
+            ) {
+                SAL_CHECK_RET(bt_hfp_ag_reject(call->session), 0);
+            } else if (
+                call->state == HFP_AG_CALL_STATE_DIALING
+                || call->state == HFP_AG_CALL_STATE_ALERTING
+            ) {
+                SAL_CHECK_RET(bt_hfp_ag_remote_reject(call->session), 0);
+            } else {
+                BT_LOGE("%s:%d, previous call state is not correct", __func__, __LINE__);
+            }
+            break;
+        default:
+            break;
+    }
     (void)num_active;
     (void)num_held;
     (void)call_state;
