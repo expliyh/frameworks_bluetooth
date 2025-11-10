@@ -15,15 +15,96 @@
  ***************************************************************************/
 
 #include "sal_hfp_ag_interface.h"
+#include "sal_connection_manager.h"
+#include "sal_hfp_internal.h"
+#include "sal_interface.h"
+#include "sal_zblue.h"
+#include "bt_debug.h"
 #include <zephyr/bluetooth/classic/hfp_ag.h>
+#include <zephyr/bluetooth/classic/sdp.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/bluetooth/l2cap.h>
+#include <zephyr/net_buf.h>
+#include <zephyr/sys/atomic.h>
+
+static bt_list_t* pending_connections = NULL;
 
 LOG_MODULE_REGISTER(sal_hfp_ag, CONFIG_BT_HFP_AG_LOG_LEVEL);
 
+static uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
+
+NET_BUF_POOL_DEFINE(ag_sdp_discover_pool, CONFIG_BT_MAX_CONN, BT_L2CAP_BUF_SIZE(CONFIG_BT_L2CAP_TX_MTU),
+		    CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
+
+static struct bt_sdp_discover_params sdp_discover = {
+	.func = on_sdp_done,
+	.pool = &ag_sdp_discover_pool,
+	.uuid = BT_UUID_DECLARE_16(BT_SDP_HANDSFREE_AGW_SVCLASS),
+};
+
+typedef struct _bt_hfp_ag_connection {
+    bt_address_t* addr;
+    struct bt_conn* conn;
+    struct bt_hfp_ag *ag;
+} bt_hfp_ag_connection_t;
+
+static bool mem_addr_cmp(void* p_data, void* context) {
+    return p_data == context;
+}
+
+static bool sal_bt_hfp_ag_cmp(void* p_data, void* context) {
+    bt_hfp_ag_connection_t* sal_conn = (bt_hfp_ag_connection_t*)p_data;
+    struct bt_hfp_ag* ag = (struct bt_hfp_ag*)context;
+    return sal_conn->ag == ag;
+}
+
+static bool sal_bt_addr_cmp(void* p_data, void* context) {
+    bt_hfp_ag_connection_t* sal_conn = (bt_hfp_ag_connection_t*)p_data;
+    bt_address_t* addr = (bt_address_t*)context;
+    return !bt_addr_compare(sal_conn->addr, addr);
+}
+
+static bt_hfp_ag_connection_t* find_connection_by_addr(bt_address_t* addr) {
+    return (bt_hfp_ag_connection_t*)bt_list_find(pending_connections, sal_bt_addr_cmp, addr);
+}
+
+static bt_hfp_ag_connection_t* find_connection_by_ag(struct bt_hfp_ag *ag) {
+    return (bt_hfp_ag_connection_t*)bt_list_find(pending_connections, sal_bt_hfp_ag_cmp, ag);
+}
+
+static bt_hfp_ag_connection_t* find_connection_by_conn(struct bt_conn* conn) {
+    return (bt_hfp_ag_connection_t*)bt_list_find(pending_connections, mem_addr_cmp, conn);
+}
+
+static void cmp_connection(void* p_data, void* context) {
+    bt_hfp_ag_connection_t* data = (bt_hfp_ag_connection_t*)p_data;
+    struct bt_hfp_ag *ag = (struct bt_hfp_ag*)context;
+    if (data->ag == ag) {
+        BT_LOGD("%s, HFP AG connected callback for pending connection", __func__);
+    }
+}
+
 static void ag_connected(struct bt_conn *conn, struct bt_hfp_ag *ag)
 {
-    (void)conn;
-    (void)ag;
+    BT_LOGD("%s, HFP AG connected, ag=%d", __func__, ag);
+    bt_address_t bd_addr;
+    if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS)
+        return;
+    if (!find_connection_by_addr(&bd_addr)) {
+            bt_hfp_ag_connection_t* new_connection = (bt_hfp_ag_connection_t*)zalloc(sizeof(bt_hfp_ag_connection_t));
+            new_connection->addr = (bt_address_t*)zalloc(sizeof(bt_address_t));
+        if (new_connection == NULL) {
+            BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+            return BT_STATUS_FAIL;
+        }
+        bt_sal_get_remote_address(conn, new_connection->addr);
+        new_connection->conn = conn;
+        new_connection->ag = ag;
+
+        bt_list_add_tail(pending_connections, new_connection);
+    }
+    hfp_ag_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTING, 0, 0);
+    hfp_ag_on_connection_state_changed(&bd_addr, PROFILE_STATE_CONNECTED, 0, 0);
 }
 
 static void ag_disconnected(struct bt_hfp_ag *ag)
@@ -191,6 +272,72 @@ static void ag_hf_indicator_value(struct bt_hfp_ag *ag, enum hfp_ag_hf_indicator
     (void)value;
 }
 
+typedef struct _do_ag_connect_params {
+    struct bt_conn *conn;
+    uint16_t channel;
+} do_ag_connect_params_t;
+
+static void do_ag_connect(do_ag_connect_params_t *params)
+{
+    struct bt_conn *conn = params->conn;
+    uint16_t channel = params->channel;
+    free(params);
+    struct bt_hfp_ag *ag = NULL;
+
+    if (z_bt_hfp_ag_connect(conn, &ag, channel)) {
+        BT_LOGE("%s, Failed to initiate HFP HF connection", __func__);
+        bt_conn_unref(conn);
+        return;
+    }
+
+    bt_hfp_ag_connection_t *new_connection =
+        (bt_hfp_ag_connection_t *)zalloc(sizeof(bt_hfp_ag_connection_t));
+    if (!new_connection) {
+        BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+        return;
+    }
+
+    bt_sal_get_remote_address(conn, new_connection->addr);
+    new_connection->conn = conn;
+    new_connection->ag = ag;
+
+    bt_list_add_tail(pending_connections, new_connection);
+
+    BT_LOGI("%s, HFP AG connection established successfully", __func__);
+}
+
+static uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore)
+{
+    int err;
+    uint16_t value;
+
+    BT_LOGD("Discover done");
+
+    if (result->resp_buf != NULL) {
+        err = bt_sdp_get_proto_param(result->resp_buf, BT_SDP_PROTO_RFCOMM, &value);
+
+        if (err != 0) {
+            BT_LOGD("Fail to parser RFCOMM the SDP response!");
+        } else {
+            BT_LOGD("The server channel is %d", value);
+            err = 0;
+            do_ag_connect_params_t* params = (do_ag_connect_params_t*)zalloc(sizeof(do_ag_connect_params_t));
+            if (params == NULL) {
+                BT_LOGE("%s, Failed to allocate memory for new HFP HF connection", __func__);
+                return -1;
+            }
+            params->conn = conn;
+            params->channel = value;
+            CALL_IN_SERVICE(do_ag_connect, params);
+            params = NULL;
+            if (err != 0) {
+                BT_LOGD("Fail to create hfp connection (err %d)", err);
+            }
+        }
+    }
+    return BT_SDP_DISCOVER_UUID_STOP;
+}
+
 /* --- 全局回调结构 --- */
 static const struct bt_hfp_ag_cb g_hfp_ag_cb = {
     .connected = ag_connected,
@@ -228,6 +375,7 @@ bt_status_t bt_sal_hfp_ag_init(uint32_t features, uint8_t max_connection)
 {
     (void)features;
     (void)max_connection;
+    BT_LOGD("%s, HFP AG init", __func__);
 
     bt_hfp_ag_register(&g_hfp_ag_cb);
     return BT_STATUS_SUCCESS;
@@ -239,7 +387,21 @@ void bt_sal_hfp_ag_cleanup(void)
 
 bt_status_t bt_sal_hfp_ag_connect(bt_address_t* addr)
 {
-    (void)addr;
+    struct bt_conn* conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
+
+    if (!conn){
+        BT_LOGW("%s, acl not conneted, try connect\n", __func__);
+        if (bt_sal_connect(0, addr) != BT_STATUS_SUCCESS)
+            return BT_STATUS_FAIL;
+        conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
+        if (!conn) {
+            BT_LOGE("%s, acl not conneted, try connect failed\n", __func__);
+            return BT_STATUS_FAIL;
+        }
+    }
+
+    SAL_CHECK_RET(bt_sdp_discover(conn, &sdp_discover), 0);
+
     return BT_STATUS_SUCCESS;
 }
 

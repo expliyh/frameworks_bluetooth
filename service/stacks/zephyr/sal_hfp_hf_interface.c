@@ -36,7 +36,7 @@
 
 static bt_list_t* pending_connections = NULL;
 
-uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
+static uint8_t on_sdp_done(struct bt_conn *conn, struct bt_sdp_client_result *result, const struct bt_sdp_discover_params *ignore);
 
 NET_BUF_POOL_DEFINE(sdp_discover_pool, CONFIG_BT_MAX_CONN, BT_L2CAP_BUF_SIZE(CONFIG_BT_L2CAP_TX_MTU),
 		    CONFIG_BT_CONN_TX_USER_DATA_SIZE, NULL);
