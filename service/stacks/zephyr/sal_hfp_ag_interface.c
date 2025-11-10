@@ -101,6 +101,9 @@ static bt_hfp_ag_call_t* find_call_by_number(bt_hfp_ag_connection_t conn, const 
 }
 
 static bt_hfp_ag_connection_t* find_connection_by_addr(bt_address_t* addr) {
+    if (!pending_connections) {
+        BT_LOGE("%s, pending_connections is NULL", __func__);
+    }
     return (bt_hfp_ag_connection_t*)bt_list_find(pending_connections, sal_bt_addr_cmp, addr);
 }
 
@@ -124,8 +127,10 @@ static void ag_connected(struct bt_conn *conn, struct bt_hfp_ag *ag)
 {
     BT_LOGD("%s, HFP AG connected, ag=%d", __func__, ag);
     bt_address_t bd_addr;
-    if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS)
+    if (bt_sal_get_remote_address(conn, &bd_addr) != BT_STATUS_SUCCESS) {
+        BT_LOGE("%s, Failed to get remote address", __func__);
         return;
+    }
     if (!find_connection_by_addr(&bd_addr)) {
             bt_hfp_ag_connection_t* new_connection = (bt_hfp_ag_connection_t*)zalloc(sizeof(bt_hfp_ag_connection_t));
             new_connection->addr = (bt_address_t*)zalloc(sizeof(bt_address_t));
@@ -145,7 +150,17 @@ static void ag_connected(struct bt_conn *conn, struct bt_hfp_ag *ag)
 
 static void ag_disconnected(struct bt_hfp_ag *ag)
 {
-    (void)ag;
+    bt_hfp_ag_connection_t* conn = find_connection_by_ag(ag);
+    if (!conn) {
+        BT_LOGE("%s, Failed to find connection", __func__);
+        return;
+    }
+    bt_address_t *bd_addr = conn->addr;
+
+    hfp_ag_on_connection_state_changed(bd_addr, PROFILE_STATE_DISCONNECTING, 0, 0);
+    hfp_ag_on_connection_state_changed(bd_addr, PROFILE_STATE_DISCONNECTED, 0, 0);
+
+    bt_list_remove(pending_connections, conn);
 }
 
 static void ag_sco_connected(struct bt_hfp_ag *ag, struct bt_conn *sco_conn)
