@@ -525,7 +525,12 @@ bt_status_t bt_sal_hfp_ag_connect(bt_address_t* addr)
 
 bt_status_t bt_sal_hfp_ag_disconnect(bt_address_t* addr)
 {
-    (void)addr;
+    bt_hfp_ag_connection_t *conn = find_connection_by_addr((bt_addr_t *)addr);
+    if (!conn) {
+        BT_LOGE("%s, Failed to find connection", __func__);
+        return BT_STATUS_FAIL;
+    }
+    SAL_CHECK_RET(bt_hfp_ag_disconnect(conn->ag), 0);
     return BT_STATUS_SUCCESS;
 }
 
