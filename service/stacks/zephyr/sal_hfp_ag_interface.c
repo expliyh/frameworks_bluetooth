@@ -198,17 +198,66 @@ static int ag_number_call(struct bt_hfp_ag *ag, const char *number)
 
 static void ag_outgoing(struct bt_hfp_ag *ag, struct bt_hfp_ag_call *call, const char *number)
 {
-    (void)ag;
-    (void)call;
-    (void)number;
+    bt_hfp_ag_connection_t* conn = find_connection_by_ag(ag);
+    bt_hfp_ag_call_t* sal_call = find_call_by_number(conn, number);
+    if (!sal_call) {
+        sal_call = (bt_hfp_ag_call_t*)zalloc(sizeof(bt_hfp_ag_call_t));
+        BT_LOGD("%s, Add new call", __func__);
+        sal_call = (bt_hfp_ag_call_t*)zalloc(sizeof(bt_hfp_ag_call_t));
+        if (!sal_call) {
+            BT_LOGE("%s:%d, failed to allocate memory for call", __func__, __LINE__);
+            return;
+        }
+        strncpy(sal_call->number, number, sizeof(sal_call->number));
+        bt_list_add_tail(conn->calls, sal_call);
+    }
+    sal_call->state = HFP_AG_CALL_STATE_DIALING;
+    sal_call->session = call;
+    return;
 }
 
 static void ag_incoming(struct bt_hfp_ag *ag, struct bt_hfp_ag_call *call, const char *number)
 {
-    (void)ag;
-    (void)call;
-    (void)number;
+    bt_hfp_ag_connection_t *conn = find_connection_by_ag(ag);
+    bt_hfp_ag_call_t *sal_call = NULL;
+
+    if (!conn) {
+        BT_LOGE("%s:%d, connection not found", __func__, __LINE__);
+        return;
+    }
+
+    if (number && strlen(number) > 0) {
+        sal_call = find_call_by_number(conn, number);
+    } else {
+        BT_LOGE("%s, Incoming call with unknown number", __func__);
+        return;
+    }
+
+    if (!sal_call) {
+        sal_call = (bt_hfp_ag_call_t *)zalloc(sizeof(bt_hfp_ag_call_t));
+        if (!sal_call) {
+            BT_LOGE("%s:%d, failed to allocate memory for call", __func__, __LINE__);
+            return;
+        }
+
+        strncpy(sal_call->number, number, sizeof(sal_call->number));
+
+        bt_list_add_tail(conn->calls, sal_call);
+        BT_LOGD("%s, Add new incoming call", __func__);
 }
+
+    if (
+        sal_call->state != HFP_AG_CALL_STATE_INCOMING
+        || sal_call->state != HFP_AG_CALL_STATE_WAITING
+    ) {
+        sal_call->state = HFP_AG_CALL_STATE_INCOMING;
+    }
+    sal_call->session = call;
+
+    BT_LOGD("%s, Incoming call from %s", __func__, sal_call->number);
+    return;
+}
+
 
 static void ag_incoming_held(struct bt_hfp_ag_call *call)
 {
