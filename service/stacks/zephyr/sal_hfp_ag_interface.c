@@ -495,9 +495,25 @@ bt_status_t bt_sal_hfp_ag_connect(bt_address_t* addr)
         BT_LOGW("%s, acl not conneted, try connect\n", __func__);
         if (bt_sal_connect(0, addr) != BT_STATUS_SUCCESS)
             return BT_STATUS_FAIL;
-        conn = bt_conn_lookup_addr_br((bt_addr_t*)addr);
+        #define CONN_CHECK_INTERVAL_MS 50
+        #define CONN_CHECK_TIMEOUT_MS  500
+
+        bt_conn_t *conn = NULL;
+        int elapsed = 0;
+
+        while (elapsed < CONN_CHECK_TIMEOUT_MS) {
+            conn = bt_conn_lookup_addr_br((bt_addr_t *)addr);
+            if (conn) {
+                break;
+            }
+
+            k_msleep(CONN_CHECK_INTERVAL_MS);
+            elapsed += CONN_CHECK_INTERVAL_MS;
+        }
+
         if (!conn) {
-            BT_LOGE("%s, acl not conneted, try connect failed\n", __func__);
+            BT_LOGE("%s, acl not connected after %d ms, try connect failed\n",
+                    __func__, elapsed);
             return BT_STATUS_FAIL;
         }
     }
