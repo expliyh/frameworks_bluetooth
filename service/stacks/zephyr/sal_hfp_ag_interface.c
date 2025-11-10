@@ -42,14 +42,42 @@ static struct bt_sdp_discover_params sdp_discover = {
 	.uuid = BT_UUID_DECLARE_16(BT_SDP_HANDSFREE_AGW_SVCLASS),
 };
 
+typedef struct _bt_hfp_ag_call {
+	char number[20];
+	hfp_ag_call_state_t state;
+    struct bt_hfp_ag_call* session;
+} bt_hfp_ag_call_t;
+
 typedef struct _bt_hfp_ag_connection {
     bt_address_t* addr;
     struct bt_conn* conn;
     struct bt_hfp_ag *ag;
+    struct bt_list_t* calls;
 } bt_hfp_ag_connection_t;
+
+static void free_connection(void* p_data)
+{
+    bt_hfp_ag_connection_t* data = (bt_hfp_ag_connection_t*)p_data;
+    // bt_conn_unref(data->conn);
+    free(data);
+    return;
+}
+
+static void free_call(void* p_data)
+{
+    bt_hfp_ag_call_t* data = (bt_hfp_ag_call_t*)p_data;
+    free(data);
+    return;
+}
 
 static bool mem_addr_cmp(void* p_data, void* context) {
     return p_data == context;
+}
+
+static bool sal_bt_hfp_ag_call_number_cmp(void* p_data, void* context) {
+    bt_hfp_ag_call_t* sal_call = (bt_hfp_ag_call_t*)p_data;
+    char* number = (char*)context;
+    return !strcmp(sal_call->number, number);
 }
 
 static bool sal_bt_hfp_ag_cmp(void* p_data, void* context) {
@@ -62,6 +90,14 @@ static bool sal_bt_addr_cmp(void* p_data, void* context) {
     bt_hfp_ag_connection_t* sal_conn = (bt_hfp_ag_connection_t*)p_data;
     bt_address_t* addr = (bt_address_t*)context;
     return !bt_addr_compare(sal_conn->addr, addr);
+}
+
+static bt_hfp_ag_call_t* find_call_by_number(bt_hfp_ag_connection_t conn, const char* number) {
+    if (!on_going_calls) {
+        BT_LOGE("%s, on_going_calls is NULL", __func__);
+    }
+    bt_list_t* on_going_calls = conn.calls;
+    return (bt_hfp_ag_call_t*)bt_list_find(on_going_calls, sal_bt_hfp_ag_call_number_cmp, (void*)number);
 }
 
 static bt_hfp_ag_connection_t* find_connection_by_addr(bt_address_t* addr) {
@@ -376,6 +412,8 @@ bt_status_t bt_sal_hfp_ag_init(uint32_t features, uint8_t max_connection)
     (void)features;
     (void)max_connection;
     BT_LOGD("%s, HFP AG init", __func__);
+    pending_connections = bt_list_new(free_connection);
+    on_going_calls = bt_list_new(free_call);
 
     bt_hfp_ag_register(&g_hfp_ag_cb);
     return BT_STATUS_SUCCESS;
