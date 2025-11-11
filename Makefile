@@ -253,6 +253,12 @@ endif #CONFIG_BLUETOOTH_GATT_CLIENT
 ifeq ($(CONFIG_BLUETOOTH_GATT_SERVER), y)
 	CSRCS += service/stacks/zephyr/sal_gatt_server_interface.c
 endif #CONFIG_BLUETOOTH_GATT_SERVER
+ifeq ($(CONFIG_BLUETOOTH_HFP_HF), y)
+	CSRCS += service/stacks/zephyr/sal_hfp_hf_interface.c
+endif #CONFIG_BLUETOOTH_HFP_HF
+ifeq ($(CONFIG_BLUETOOTH_HFP_AG), y)
+	CSRCS += service/stacks/zephyr/sal_hfp_ag_interface.c
+endif #CONFIG_BLUETOOTH_HFP_AG
 endif #CONFIG_BLUETOOTH_STACK_LE_ZBLUE
 
 endif
