@@ -352,7 +352,7 @@ static void zblue_hf_disconnected(struct bt_hfp_hf* hf)
     bt_list_remove(g_sal_hf_conn_list, conn);
 }
 
-static void zblue_on_outgoing_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_call *call)
+static void zblue_on_outgoing_call(struct bt_hfp_hf* hf, struct bt_hfp_hf_call* call)
 {
     bt_hfp_hf_connection_t* sal_conn = find_connection_by_hf(hf);
     if (!sal_conn) {
@@ -367,7 +367,7 @@ static void zblue_on_outgoing_call(struct bt_hfp_hf *hf, struct bt_hfp_hf_call *
     }
 
     set_call_state(sal_conn, sal_call, HFP_HF_CALL_STATE_DIALING);
-    
+
     hfp_hf_on_call_setup_state_changed(&sal_conn->addr, HFP_CALLSETUP_OUTGOING);
 }
 
@@ -416,6 +416,27 @@ static void zblue_on_call_reject(struct bt_hfp_hf_call* call)
 
     set_call_state(conn, sal_call, HFP_HF_CALL_STATE_DISCONNECTED);
     hfp_hf_on_call_setup_state_changed(&conn->addr, HFP_CALLSETUP_NONE);
+}
+
+static void zblue_on_call_terminate(struct bt_hfp_hf_call* call)
+{
+    bt_hfp_hf_call_info_t* sal_call = NULL;
+    bt_hfp_hf_connection_t* sal_conn = find_connection_by_call_context(call, &sal_call);
+
+    if (!sal_conn || !sal_call) {
+        BT_LOGW("%s, Failed to find call to terminate", __func__);
+        return;
+    }
+
+    if (sal_call->state == HFP_HF_CALL_STATE_ACTIVE) {
+        hfp_hf_on_call_active_state_changed(&sal_conn->addr, HFP_CALL_NO_CALLS_IN_PROGRESS);
+    } else if (sal_call->state == HFP_HF_CALL_STATE_HELD) {
+        hfp_hf_on_call_held_state_changed(&sal_conn->addr, HFP_CALLHELD_NONE);
+    } else {
+        BT_LOGW("Unknow previous state %d.", sal_call->state);
+    }
+
+    set_call_state(sal_conn, sal_call, HFP_HF_CALL_STATE_DISCONNECTED);
 }
 
 static void zblue_on_subscriber_number(struct bt_hfp_hf* hf, const char* number, uint8_t type, uint8_t service)
@@ -537,7 +558,7 @@ static struct bt_hfp_hf_cb hf_callbacks = {
     .incoming_held = NULL,
     .accept = zblue_on_call_accept,
     .reject = zblue_on_call_reject,
-    .terminate = NULL,
+    .terminate = zblue_on_call_terminate,
     .held = NULL,
     .retrieve = NULL,
     .signal = NULL,
