@@ -30,6 +30,7 @@
 #undef BT_UUID_DECLARE_16
 #undef BT_UUID_DECLARE_32
 #undef BT_UUID_DECLARE_128
+#undef ARRAY_SIZE
 
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/classic/hfp_hf.h>
