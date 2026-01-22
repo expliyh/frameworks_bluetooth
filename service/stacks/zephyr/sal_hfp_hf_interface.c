@@ -52,6 +52,14 @@ typedef struct _hf_connect_params {
     uint8_t channel;
 } hf_connect_params_t;
 
+typedef struct _hf_connect_sco_params {
+    struct bt_hfp_hf* hf;
+} hf_connect_sco_params_t;
+
+typedef struct _hf_disconnect_sco_params {
+    struct bt_conn* sco_conn;
+} hf_disconnect_sco_params_t;
+
 static hf_connect_params_t* g_conn_params = NULL;
 
 typedef struct _bt_hfp_hf_call_info {
@@ -387,6 +395,75 @@ bt_status_t do_hf_disconnect(bt_controller_id_t id, bt_address_t* addr, void* us
 
     SAL_CHECK_RET(Z_API(bt_hfp_hf_disconnect)(sal_conn->hf), 0);
     return BT_STATUS_SUCCESS;
+}
+
+static void do_hf_sco_disconnect(service_work_t* work, void* userdata)
+{
+    hf_disconnect_sco_params_t* params;
+    struct bt_conn* sco_conn;
+    bt_hfp_hf_connection_t* sal_conn;
+    int err;
+
+    params = (hf_disconnect_sco_params_t*)userdata;
+    if (!params) {
+        BT_LOGE("%s, Invalid parameters", __func__);
+        return;
+    }
+
+    if (!params->sco_conn) {
+        BT_LOGE("%s, Invalid sco_conn parameter", __func__);
+        free(params);
+        return;
+    }
+
+    sco_conn = params->sco_conn;
+    free(params);
+
+    sal_conn = find_connection_by_sco(sco_conn);
+    if (!sal_conn) {
+        BT_LOGW("%s, sco_conn no longer tracked, skip disconnect", __func__);
+        return;
+    }
+
+    err = bt_conn_disconnect(sco_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+    if (err) {
+        BT_LOGE("%s, Failed to disconnect HFP HF SCO, err=%d", __func__, err);
+    }
+}
+
+static void do_hf_sco_connect(service_work_t* work, void* userdata)
+{
+    hf_connect_sco_params_t* params;
+    bt_hfp_hf_connection_t* sal_conn;
+    struct bt_hfp_hf* hf;
+    int err;
+
+    params = (hf_connect_sco_params_t*)userdata;
+    if (!params) {
+        BT_LOGE("%s, Invalid parameters", __func__);
+        return;
+    }
+
+    if (!params->hf) {
+        BT_LOGE("%s, Invalid hf parameter", __func__);
+        free(params);
+        return;
+    }
+
+    hf = params->hf;
+    free(params);
+
+    sal_conn = find_connection_by_hf(hf);
+    if (!sal_conn) {
+        BT_LOGW("%s, hf no longer tracked, skip connect", __func__);
+        return;
+    }
+
+    err = Z_API(bt_hfp_hf_audio_connect)(hf);
+    if (err) {
+        BT_LOGE("%s, Failed to connect HFP HF SCO, err=%d", __func__, err);
+        hfp_hf_on_audio_connection_state_changed(&sal_conn->addr, HFP_AUDIO_STATE_DISCONNECTED, 0);
+    }
 }
 
 static uint8_t zblue_on_sdp_done(struct bt_conn* conn, struct bt_sdp_client_result* result,
@@ -1010,12 +1087,19 @@ bt_status_t bt_sal_hfp_hf_connect_audio(bt_address_t* addr)
         return BT_STATUS_FAIL;
     }
 
-    int ret = Z_API(bt_hfp_hf_audio_connect)(sal_conn->hf);
-    if (ret == -ENOTSUP) {
-        return BT_STATUS_UNSUPPORTED;
+    hf_connect_sco_params_t* params = (hf_connect_sco_params_t*)zalloc(sizeof(hf_connect_sco_params_t));
+    if (!params) {
+        BT_LOGE("%s, Failed to allocate memory", __func__);
+        return BT_STATUS_NOMEM;
     }
 
-    SAL_CHECK_RET(ret, 0);
+    params->hf = sal_conn->hf;
+
+    if (!service_loop_work(params, do_hf_sco_connect, NULL)) {
+        free(params);
+        return BT_STATUS_FAIL;
+    }
+
     return BT_STATUS_SUCCESS;
 }
 
@@ -1039,8 +1123,19 @@ bt_status_t bt_sal_hfp_hf_disconnect_audio(bt_address_t* addr)
         return BT_STATUS_PARM_INVALID;
     }
 
-    int ret = bt_conn_disconnect(sal_conn->sco_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-    SAL_CHECK_RET(ret, 0);
+    hf_disconnect_sco_params_t* params = (hf_disconnect_sco_params_t*)zalloc(sizeof(hf_disconnect_sco_params_t));
+    if (!params) {
+        BT_LOGE("%s, Failed to allocate memory", __func__);
+        return BT_STATUS_NOMEM;
+    }
+
+    params->sco_conn = sal_conn->sco_conn;
+
+    if (!service_loop_work(params, do_hf_sco_disconnect, NULL)) {
+        free(params);
+        return BT_STATUS_FAIL;
+    }
+
     return BT_STATUS_SUCCESS;
 }
 
