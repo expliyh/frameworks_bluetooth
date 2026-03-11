@@ -378,6 +378,8 @@ static bt_status_t do_ag_connect(bt_controller_id_t id, bt_address_t* addr, void
     /** Remember to unref @p conn once SLC is initiated or cancelled */
     if (!conn) {
         BT_LOGE("%s, Failed to lookup connection", __func__);
+        hfp_ag_on_connection_state_changed(addr, PROFILE_STATE_DISCONNECTED, 0, 0);
+        bt_sal_cm_profile_disconnected_callback(addr, PROFILE_HFP_AG, CONN_ID_DEFAULT);
         return BT_STATUS_NOT_FOUND;
     }
 
@@ -386,6 +388,8 @@ static bt_status_t do_ag_connect(bt_controller_id_t id, bt_address_t* addr, void
         BT_LOGD("%s, SDP not discovered", __func__);
         if (bt_sdp_discover(conn, &sdp_discover) < 0) {
             BT_LOGE("%s, Failed to start a SDP discovery", __func__);
+            hfp_ag_on_connection_state_changed(addr, PROFILE_STATE_DISCONNECTED, 0, 0);
+            bt_sal_cm_profile_disconnected_callback(addr, PROFILE_HFP_AG, CONN_ID_DEFAULT);
             bt_conn_unref(conn);
             return BT_STATUS_FAIL;
         }
@@ -402,6 +406,8 @@ static bt_status_t do_ag_connect(bt_controller_id_t id, bt_address_t* addr, void
     BT_LOGD("%s, SLC initiating", __func__);
     if (Z_API(bt_hfp_ag_connect)(conn, &ag, channel)) {
         BT_LOGE("%s, Failed to initiate HFP ag connection", __func__);
+        hfp_ag_on_connection_state_changed(addr, PROFILE_STATE_DISCONNECTED, 0, 0);
+        bt_sal_cm_profile_disconnected_callback(addr, PROFILE_HFP_AG, CONN_ID_DEFAULT);
         bt_conn_unref(conn);
         return BT_STATUS_FAIL;
     }
@@ -411,6 +417,8 @@ static bt_status_t do_ag_connect(bt_controller_id_t id, bt_address_t* addr, void
         if (Z_API(bt_hfp_ag_disconnect)(ag)) {
             BT_LOGE("%s, Failed disconnect HFP", __func__);
         }
+        hfp_ag_on_connection_state_changed(addr, PROFILE_STATE_DISCONNECTED, 0, 0);
+        bt_sal_cm_profile_disconnected_callback(addr, PROFILE_HFP_AG, CONN_ID_DEFAULT);
         bt_conn_unref(conn);
         return BT_STATUS_NOMEM;
     }
@@ -596,7 +604,8 @@ static uint8_t zblue_on_sdp_done(struct bt_conn* conn, struct bt_sdp_client_resu
     if (do_ag_connect(0 /* bt_controller_id_t */, &bd_addr, NULL) != BT_STATUS_SUCCESS) {
         free(g_conn_params);
         g_conn_params = NULL;
-        goto error;
+        /* do_ag_connect already handles error callbacks internally */
+        return BT_SDP_DISCOVER_UUID_STOP;
     }
 
     return BT_SDP_DISCOVER_UUID_STOP;

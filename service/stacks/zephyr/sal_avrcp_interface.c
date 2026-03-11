@@ -1395,10 +1395,13 @@ static void zblue_on_tg_get_play_status_req(struct bt_avrcp_tg* tg, uint8_t tid)
 static bt_status_t avrcp_control_connect(bt_controller_id_t id, bt_address_t* bd_addr, void* user_data)
 {
     int err;
-    struct bt_conn* conn = bt_conn_lookup_addr_br((bt_addr_t*)bd_addr);
+    struct bt_conn* conn;
 
+    conn = bt_conn_lookup_addr_br((bt_addr_t*)bd_addr);
     if (!conn) {
         BT_LOGW("avrcp_info not found");
+        avrcp_on_connection_state_changed(bd_addr, PROFILE_STATE_DISCONNECTED);
+        bt_sal_cm_profile_disconnected_callback(bd_addr, PROFILE_AVRCP_CT, CONN_ID_DEFAULT);
         return BT_STATUS_FAIL;
     }
 
@@ -1406,8 +1409,11 @@ static bt_status_t avrcp_control_connect(bt_controller_id_t id, bt_address_t* bd
 
     bt_conn_unref(conn);
 
-    if (err < 0)
+    if (err < 0) {
+        avrcp_on_connection_state_changed(bd_addr, PROFILE_STATE_DISCONNECTED);
+        bt_sal_cm_profile_disconnected_callback(bd_addr, PROFILE_AVRCP_CT, CONN_ID_DEFAULT);
         return BT_STATUS_FAIL;
+    }
 
     return BT_STATUS_SUCCESS;
 }
