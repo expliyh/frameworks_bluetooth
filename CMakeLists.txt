@@ -1016,3 +1016,6 @@ if(CONFIG_BLUETOOTH)
   target_include_directories(libbluetooth PRIVATE ${INCDIR})
 
 endif()
+
+# Z_PORT: Zephyr Bluetooth API adaptation layer
+add_subdirectory(z_port)
