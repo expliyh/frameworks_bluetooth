@@ -848,7 +848,7 @@ static void do_ag_cind_response(service_work_t* work, void* userdata)
     bt_hfp_ag_connection_t* sal_conn;
     struct bt_hfp_ag* ag;
     struct bt_hfp_ag_ongoing_call calls[HFP_CALL_LIST_MAX];
-    struct bt_hfp_ag_indicator_value indicators[4] = { 0 };
+    struct bt_hfp_ag_indicator_value indicators[7] = { 0 };
     size_t count = 0;
 
     if (!params) {
@@ -880,6 +880,12 @@ static void do_ag_cind_response(service_work_t* work, void* userdata)
     indicators[2].value = sal_conn->indicators.signal;
     indicators[3].indicator = BT_HFP_AG_BATTERY_IND;
     indicators[3].value = sal_conn->indicators.battery;
+    indicators[4].indicator = BT_HFP_AG_CALL_IND;
+    indicators[4].value = params->response.call;
+    indicators[5].indicator = BT_HFP_AG_CALL_SETUP_IND;
+    indicators[5].value = params->response.call_setup;
+    indicators[6].indicator = BT_HFP_AG_CALL_HELD_IND;
+    indicators[6].value = params->response.call_held;
 
     memset(calls, 0, sizeof(calls));
 
@@ -897,7 +903,7 @@ static void do_ag_cind_response(service_work_t* work, void* userdata)
         BT_LOGW("%s, reached max call list size", __func__);
     }
 
-    int ret = Z_API(bt_hfp_ag_ongoing_calls)(ag, calls, count, indicators, 4);
+    int ret = Z_API(bt_hfp_ag_ongoing_calls)(ag, calls, count, indicators, 7);
     if (ret) {
         BT_LOGE("%s, bt_hfp_ag_ongoing_calls failed, ret=%d", __func__, ret);
     }
@@ -2229,6 +2235,17 @@ static void do_ag_call_op(service_work_t* work, void* userdata)
         /* new call path */
         const new_call_entry_t* entry = find_new_call_entry(new_state);
         if (!entry) {
+            if (params->call_state == HFP_AG_CALL_STATE_DISCONNECTED ||
+                params->call_state == HFP_AG_CALL_STATE_IDLE) {
+                BT_LOGD("%s, untracked call terminate for number: %s",
+                    __func__, params->number);
+                if (sal_conn->ag) {
+                    Z_API(bt_hfp_ag_clear_call_indicator)(sal_conn->ag);
+                }
+                conn_list_unlock();
+                free(params);
+                return;
+            }
             conn_list_unlock();
             BT_LOGE("%s, no new_call_entry for state %d, number: %s",
                 __func__, params->call_state, params->number);
